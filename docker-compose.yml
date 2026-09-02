@@ -1,0 +1,127 @@
+version: "3.9"
+
+services:
+  user-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: user_svc
+      POSTGRES_PASSWORD: user_svc_pw
+      POSTGRES_DB: users
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://user_svc:user_svc_pw@user-db:5432/users
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      - user-db
+    ports:
+      - "8081:8081"
+
+  product-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: product_svc
+      POSTGRES_PASSWORD: product_svc_pw
+      POSTGRES_DB: products
+    volumes:
+      - product_db_data:/var/lib/postgresql/data
+
+  product-service:
+    build:
+      context: .
+      dockerfile: services/product-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://product_svc:product_svc_pw@product-db:5432/products
+    depends_on:
+      - product-db
+    ports:
+      - "8082:8082"
+
+  cart-redis:
+    image: redis:7-alpine
+    volumes:
+      - cart_redis_data:/data
+
+  cart-service:
+    build:
+      context: .
+      dockerfile: services/cart-service/Dockerfile
+    environment:
+      REDIS_URL: redis://cart-redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      - cart-redis
+    ports:
+      - "8083:8083"
+
+  order-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: order_svc
+      POSTGRES_PASSWORD: order_svc_pw
+      POSTGRES_DB: orders
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://order_svc:order_svc_pw@order-db:5432/orders
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_URL: http://user-service:8081
+      PRODUCT_SERVICE_URL: http://product-service:8082
+      CART_SERVICE_URL: http://cart-service:8083
+      PAYMENT_SERVICE_URL: http://payment-service:8085
+      NOTIFICATION_SERVICE_URL: http://notification-service:8086
+    depends_on:
+      - order-db
+      - user-service
+      - product-service
+      - cart-service
+    ports:
+      - "8084:8084"
+
+  payment-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: payment_svc
+      POSTGRES_PASSWORD: payment_svc_pw
+      POSTGRES_DB: payments
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://payment_svc:payment_svc_pw@payment-db:5432/payments
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+    depends_on:
+      - payment-db
+    ports:
+      - "8085:8085"
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    environment:
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+    ports:
+      - "8086:8086"
+
+volumes:
+  user_db_data:
+  product_db_data:
+  cart_redis_data:
+  order_db_data:
+  payment_db_data:

@@ -1,0 +1,8 @@
+/target
+.env
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+docker-compose.override.yml
