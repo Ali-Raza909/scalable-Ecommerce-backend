@@ -24,9 +24,15 @@ async fn main() {
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
-    let pool = PgPool::connect(&database_url)
-        .await
-        .expect("Failed to connect to database");
+    let pool = loop {
+        match PgPool::connect(&database_url).await {
+            Ok(pool) => break pool,
+            Err(e) => {
+                tracing::warn!("Database connection failed, retrying in 2s: {}", e);
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        }
+    };
 
     sqlx::migrate!("./migrations")
         .run(&pool)
