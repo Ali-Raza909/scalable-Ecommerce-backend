@@ -1,26 +1,22 @@
-# --- build stage ---
-FROM rust:latest AS builder
+# --- planner stage: figure out the dependency tree ---
+FROM rust:latest AS chef
+RUN cargo install cargo-chef --locked
 WORKDIR /app
 
-# Cache dependencies: copy manifests + shared lib only, build a dummy binary
-COPY libs/common/Cargo.toml ./libs/common/Cargo.toml
-COPY libs/common/src ./libs/common/src
-COPY services/product-service/Cargo.toml ./services/product-service/Cargo.toml
-RUN mkdir -p services/product-service/src && \
-    echo 'fn main() {}' > services/product-service/src/main.rs && \
-    cd services/product-service && \
-    cargo build --release
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Build the real binary (deps are cached from the layer above)
-COPY services/product-service/src ./services/product-service/src
-COPY services/product-service/migrations ./services/product-service/migrations
-RUN touch services/product-service/src/main.rs && \
-    cd services/product-service && \
-    cargo build --release
+# --- builder stage: build deps first (cached), then real code ---
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --package product-service --recipe-path recipe.json
+COPY . .
+RUN cargo build --release --bin product-service
 
 # --- runtime stage ---
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/services/product-service/target/release/product-service /usr/local/bin/product-service
+COPY --from=builder /app/target/release/product-service /usr/local/bin/product-service
 EXPOSE 8082
 CMD ["product-service"]

@@ -1,6 +1,10 @@
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
-use axum::{extract::State, Json};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    Json,
+};
 use rand::rngs::OsRng;
 use sqlx::PgPool;
 
@@ -11,7 +15,7 @@ use crate::models::{RegisterRequest, UserResponse};
 pub async fn register(
     State(pool): State<PgPool>,
     Json(input): Json<RegisterRequest>,
-) -> Result<Json<UserResponse>, AppError> {
+) -> Result<(StatusCode, Json<UserResponse>), AppError> {
     if input.email.is_empty() || input.password.is_empty() || input.full_name.is_empty() {
         return Err(AppError::BadRequest(
             "Email, password, and full name are required".to_string(),
@@ -30,5 +34,5 @@ pub async fn register(
 
     let user = db::create_user(&pool, &input.email, &password_hash, &input.full_name).await?;
 
-    Ok(Json(UserResponse::from(user)))
+    Ok((StatusCode::CREATED, Json(UserResponse::from(user))))
 }
