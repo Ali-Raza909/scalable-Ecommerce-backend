@@ -1,10 +1,22 @@
 # --- build stage ---
 FROM rust:latest AS builder
 WORKDIR /app
-COPY libs/common ./libs/common
-COPY services/product-service ./services/product-service
-WORKDIR /app/services/product-service
-RUN cargo build --release
+
+# Cache dependencies: copy manifests + shared lib only, build a dummy binary
+COPY libs/common/Cargo.toml ./libs/common/Cargo.toml
+COPY libs/common/src ./libs/common/src
+COPY services/product-service/Cargo.toml ./services/product-service/Cargo.toml
+RUN mkdir -p services/product-service/src && \
+    echo 'fn main() {}' > services/product-service/src/main.rs && \
+    cd services/product-service && \
+    cargo build --release
+
+# Build the real binary (deps are cached from the layer above)
+COPY services/product-service/src ./services/product-service/src
+COPY services/product-service/migrations ./services/product-service/migrations
+RUN touch services/product-service/src/main.rs && \
+    cd services/product-service && \
+    cargo build --release
 
 # --- runtime stage ---
 FROM debian:bookworm-slim

@@ -1,4 +1,8 @@
-use axum::{extract::State, Json};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    Json,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -9,7 +13,7 @@ use crate::models::{CreateProductRequest, Product};
 pub async fn create_product(
     State(pool): State<PgPool>,
     Json(input): Json<CreateProductRequest>,
-) -> Result<Json<Product>, AppError> {
+) -> Result<(StatusCode, Json<Product>), AppError> {
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("Product name is required".to_string()));
     }
@@ -39,5 +43,5 @@ pub async fn create_product(
     )
     .await?;
 
-    Ok(Json(product))
+    Ok((StatusCode::CREATED, Json(product)))
 }
