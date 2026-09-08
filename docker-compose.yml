@@ -5,6 +5,8 @@ services:
       POSTGRES_USER: user_svc
       POSTGRES_PASSWORD: user_svc_pw
       POSTGRES_DB: users
+    ports:
+      - "54321:5432"
     volumes:
       - user_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -32,8 +34,15 @@ services:
       POSTGRES_USER: product_svc
       POSTGRES_PASSWORD: product_svc_pw
       POSTGRES_DB: products
+    ports:
+      - "54322:5432"
     volumes:
       - product_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U product_svc -d products"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   product-service:
     build:
@@ -41,8 +50,10 @@ services:
       dockerfile: services/product-service/Dockerfile
     environment:
       DATABASE_URL: postgres://product_svc:product_svc_pw@product-db:5432/products
+      JWT_SECRET: ${JWT_SECRET}
     depends_on:
-      - product-db
+      product-db:
+        condition: service_healthy
     ports:
       - "8082:8082"
 

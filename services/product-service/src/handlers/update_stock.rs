@@ -1,18 +1,23 @@
 use axum::{extract::{Path, State}, Json};
 use sqlx::PgPool;
-use serde::Deserialize;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
-pub struct UpdateStockRequest {
-    pub delta: i32,
-}
+use crate::db;
+use crate::error::AppError;
+use crate::models::{Product, UpdateStockRequest};
 
 pub async fn update_stock(
     State(pool): State<PgPool>,
     Path(product_id): Path<Uuid>,
     Json(input): Json<UpdateStockRequest>,
-) -> Result<Json<serde_json::Value>, crate::error::AppError> {
-    // TODO: Implement update stock
-    Err(crate::error::AppError::BadRequest("Not implemented".to_string()))
+) -> Result<Json<Product>, AppError> {
+    if input.delta == 0 {
+        return Err(AppError::BadRequest("Delta cannot be zero".to_string()));
+    }
+
+    let product = db::update_stock(&pool, product_id, input.delta)
+        .await?
+        .ok_or(AppError::Conflict("Insufficient stock".to_string()))?;
+
+    Ok(Json(product))
 }

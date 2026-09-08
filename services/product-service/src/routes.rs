@@ -1,4 +1,4 @@
-use axum::{routing::{get, post, patch}, Router};
+use axum::{routing::{get, patch}, Router};
 use sqlx::PgPool;
 
 use crate::handlers;
