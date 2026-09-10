@@ -10,3 +10,9 @@ pub struct CartItem {
 pub struct Cart {
     pub items: Vec<CartItem>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct AddItemRequest {
+    pub product_id: String,
+    pub quantity: i32,
+}
