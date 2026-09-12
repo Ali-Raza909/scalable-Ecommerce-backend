@@ -15,7 +15,8 @@ pub async fn auth_middleware(
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
+        .ok_or(axum::http::StatusCode::UNAUTHORIZED)?
+        .to_string();
 
     let token = auth_header
         .strip_prefix("Bearer ")

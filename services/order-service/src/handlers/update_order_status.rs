@@ -1,11 +1,11 @@
 use axum::{extract::{Extension, Path, State}, Json};
 use common::Claims;
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::db;
 use crate::error::AppError;
 use crate::models::{Order, UpdateStatusRequest};
+use crate::state::AppState;
 
 fn valid_next_status(current: &str, requested: &str) -> bool {
     let allowed: &[&str] = match current {
@@ -18,7 +18,7 @@ fn valid_next_status(current: &str, requested: &str) -> bool {
 }
 
 pub async fn update_order_status(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Path(order_id): Path<Uuid>,
     Json(payload): Json<UpdateStatusRequest>,
@@ -27,7 +27,7 @@ pub async fn update_order_status(
         return Err(AppError::Forbidden);
     }
 
-    let order = db::get_order_by_id(&pool, order_id)
+    let order = db::get_order_by_id(&state.pool, order_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
@@ -38,7 +38,7 @@ pub async fn update_order_status(
         )));
     }
 
-    let updated = db::update_order_status(&pool, order_id, &payload.status)
+    let updated = db::update_order_status(&state.pool, order_id, &payload.status)
         .await?
         .ok_or(AppError::NotFound)?;
 

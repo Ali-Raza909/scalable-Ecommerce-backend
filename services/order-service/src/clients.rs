@@ -193,8 +193,5 @@ pub struct CartItem {
 
 #[derive(Debug, Deserialize)]
 pub struct Product {
-    pub id: Uuid,
-    pub name: String,
     pub price_cents: i32,
-    pub stock_quantity: i32,
 }
