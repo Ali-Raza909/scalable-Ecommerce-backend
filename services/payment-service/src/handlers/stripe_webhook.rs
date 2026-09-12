@@ -1,11 +1,8 @@
-use axum::{extract::State, Json};
-use sqlx::PgPool;
-use serde_json::{json, Value};
+use axum::http::StatusCode;
 
-pub async fn stripe_webhook(
-    State(pool): State<PgPool>,
-    Json(payload): Json<Value>,
-) -> Result<Json<Value>, crate::error::AppError> {
-    // TODO: Implement stripe webhook
-    Err(crate::error::AppError::BadRequest("Not implemented".to_string()))
+pub async fn stripe_webhook() -> StatusCode {
+    // TODO: implement once real Stripe integration is added;
+    // will need signature verification (Stripe-Signature header)
+    // and should call db::update_payment_status(...) based on event.type
+    StatusCode::NOT_IMPLEMENTED
 }
