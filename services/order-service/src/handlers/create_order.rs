@@ -73,7 +73,21 @@ pub async fn create_order(
         return Err(e);
     }
 
-    // 6. Clear the cart and notify (both best-effort: payment already succeeded).
+    // 6. Payment is committed (point of no return). Record it: pending -> paid.
+    //    Failures from here on warn-log only; there is nothing to roll back.
+    let order = match db::update_order_status(&state.pool, order.id, "paid").await {
+        Ok(Some(updated)) => updated,
+        Ok(None) => {
+            tracing::warn!("Order {} vanished after payment", order.id);
+            order
+        }
+        Err(e) => {
+            tracing::warn!("Failed to mark order {} paid: {:?}", order.id, e);
+            order
+        }
+    };
+
+    // 7. Clear the cart and notify (both best-effort: payment already succeeded).
     if let Err(e) = state.client.clear_cart(&token).await {
         tracing::warn!("Failed to clear cart for user {}: {:?}", user_id, e);
     }
