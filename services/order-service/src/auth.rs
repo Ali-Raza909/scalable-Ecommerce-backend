@@ -25,6 +25,7 @@ pub async fn auth_middleware(
         .map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;
 
     request.extensions_mut().insert(claims);
+    request.extensions_mut().insert(token.to_string());
 
     Ok(next.run(request).await)
 }

@@ -95,6 +95,25 @@ impl ServiceClient {
         }
     }
 
+    pub async fn restore_stock(&self, product_id: Uuid, quantity: i32) -> Result<(), AppError> {
+        let resp = self
+            .http
+            .patch(format!("{}/products/{}/stock", self.product_service_url, product_id))
+            .json(&serde_json::json!({ "delta": quantity }))
+            .send()
+            .await
+            .map_err(|e| AppError::ServiceUnavailable(format!("Product service unreachable: {e}")))?;
+
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(AppError::ServiceUnavailable(format!(
+                "Product service returned status {}",
+                resp.status()
+            )))
+        }
+    }
+
     pub async fn clear_cart(&self, token: &str) -> Result<(), AppError> {
         let resp = self
             .http
