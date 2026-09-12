@@ -126,8 +126,15 @@ services:
       POSTGRES_USER: payment_svc
       POSTGRES_PASSWORD: payment_svc_pw
       POSTGRES_DB: payments
+    ports:
+      - "54325:5432"
     volumes:
       - payment_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment_svc -d payments"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   payment-service:
     build:
@@ -138,7 +145,8 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
     depends_on:
-      - payment-db
+      payment-db:
+        condition: service_healthy
     ports:
       - "8085:8085"
 

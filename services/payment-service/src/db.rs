@@ -21,6 +21,7 @@ pub async fn create_payment(
     .await
 }
 
+#[allow(dead_code)]
 pub async fn update_payment_status(
     pool: &PgPool,
     payment_id: Uuid,
