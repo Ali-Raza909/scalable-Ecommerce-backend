@@ -30,11 +30,12 @@ pub async fn auth_middleware(
     Ok(next.run(request).await)
 }
 
-pub fn create_token(user_id: &str, email: &str, secret: &str) -> Result<String, common::AppError> {
+pub fn create_token(user_id: &str, email: &str, role: &str, secret: &str) -> Result<String, common::AppError> {
     let now = Utc::now();
     let claims = Claims {
         sub: user_id.to_string(),
         email: email.to_string(),
+        role: role.to_string(),
         exp: (now + Duration::hours(24)).timestamp() as usize,
         iat: now.timestamp() as usize,
     };

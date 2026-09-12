@@ -25,7 +25,7 @@ pub async fn login(
         .map_err(|_| AppError::Unauthorized)?;
 
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-    let token = auth::create_token(&user.id.to_string(), &user.email, &jwt_secret)?;
+    let token = auth::create_token(&user.id.to_string(), &user.email, &user.role, &jwt_secret)?;
     let expires_at = Utc::now() + chrono::Duration::hours(24);
 
     Ok(Json(LoginResponse {

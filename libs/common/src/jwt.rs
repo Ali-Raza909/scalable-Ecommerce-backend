@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct Claims {
     pub sub: String,
     pub email: String,
+    pub role: String,
     pub exp: usize,
     pub iat: usize,
 }

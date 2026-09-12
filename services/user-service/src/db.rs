@@ -5,7 +5,7 @@ use crate::models::User;
 
 pub async fn get_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, email, password_hash, full_name, created_at FROM users WHERE id = $1",
+        "SELECT id, email, password_hash, full_name, role, created_at FROM users WHERE id = $1",
     )
     .bind(user_id)
     .fetch_optional(pool)
@@ -14,7 +14,7 @@ pub async fn get_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<Option<User>
 
 pub async fn get_user_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, email, password_hash, full_name, created_at FROM users WHERE email = $1",
+        "SELECT id, email, password_hash, full_name, role, created_at FROM users WHERE email = $1",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -28,7 +28,7 @@ pub async fn create_user(
     full_name: &str,
 ) -> Result<User, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "INSERT INTO users (email, password_hash, full_name) VALUES ($1, $2, $3) RETURNING id, email, password_hash, full_name, created_at",
+        "INSERT INTO users (email, password_hash, full_name) VALUES ($1, $2, $3) RETURNING id, email, password_hash, full_name, role, created_at",
     )
     .bind(email)
     .bind(password_hash)
