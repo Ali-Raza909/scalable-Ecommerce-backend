@@ -1,17 +1,22 @@
-use axum::{extract::State, Json};
+use axum::{extract::State, http::StatusCode, Json};
 use sqlx::PgPool;
-use serde::Deserialize;
 
-#[derive(Deserialize)]
-pub struct CreatePaymentRequest {
-    pub order_id: String,
-    pub amount_cents: i32,
-}
+use crate::db;
+use crate::error::AppError;
+use crate::models::{CreatePaymentRequest, Payment};
 
 pub async fn create_payment(
     State(pool): State<PgPool>,
     Json(input): Json<CreatePaymentRequest>,
-) -> Result<Json<serde_json::Value>, crate::error::AppError> {
-    // TODO: Implement create payment
-    Err(crate::error::AppError::BadRequest("Not implemented".to_string()))
+) -> Result<(StatusCode, Json<Payment>), AppError> {
+    if input.amount_cents <= 0 {
+        return Err(AppError::BadRequest(
+            "Amount must be greater than zero".to_string(),
+        ));
+    }
+
+    let payment = db::create_payment(&pool, input.order_id, input.user_id, input.amount_cents)
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(payment)))
 }
