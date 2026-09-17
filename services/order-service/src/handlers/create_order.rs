@@ -21,17 +21,17 @@ pub async fn create_order(
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| AppError::BadRequest("Invalid user id in token".to_string()))?;
 
-    // 1. Validate the user exists (User Service).
+    //  validate the user exists through user service
     state.client.validate_user(user_id, &token).await?;
 
-    // 2. Fetch the cart (Cart Service).
+    // fetch the cart using cart service
     let cart = state.client.get_cart(&token).await?;
     if cart.items.is_empty() {
         return Err(AppError::BadRequest("Cart is empty".to_string()));
     }
 
-    // 3. Reserve stock for every item (Product Service). On any failure,
-    //    roll back the stock we already reserved.
+    // reserve stock for every item using product service, and in case of any failure, roll back the reserved stock and return an error
+    
     let mut reserved: Vec<ReservedStock> = Vec::new();
     let mut order_items: Vec<NewOrderItem> = Vec::new();
     let mut total_cents: i32 = 0;
@@ -61,33 +61,19 @@ pub async fn create_order(
         });
     }
 
-    // 4. Persist the order as pending (own database, single transaction).
+    // persist the order as pending (own database, single transaction).
     let (order, items) = db::create_order_with_items(&state.pool, user_id, total_cents, &order_items)
         .await?;
 
-    // 5. Charge the payment (Payment Service). On failure, compensate:
-    //    restore stock and mark the order cancelled.
+    // charge the payment via payment service and if it fails, roll back the reserved stock and mark the order as cancelled
+      
     if let Err(e) = state.client.request_payment(order.id, user_id, total_cents).await {
         tracing::error!("Payment failed for order {}: {:?}", order.id, e);
         compensate(&state, &reserved, order.id).await;
         return Err(e);
     }
 
-    // 6. Payment is committed (point of no return). Record it: pending -> paid.
-    //    Failures from here on warn-log only; there is nothing to roll back.
-    let order = match db::update_order_status(&state.pool, order.id, "paid").await {
-        Ok(Some(updated)) => updated,
-        Ok(None) => {
-            tracing::warn!("Order {} vanished after payment", order.id);
-            order
-        }
-        Err(e) => {
-            tracing::warn!("Failed to mark order {} paid: {:?}", order.id, e);
-            order
-        }
-    };
-
-    // 7. Clear the cart and notify (both best-effort: payment already succeeded).
+    // clear the cart and notify 
     if let Err(e) = state.client.clear_cart(&token).await {
         tracing::warn!("Failed to clear cart for user {}: {:?}", user_id, e);
     }
