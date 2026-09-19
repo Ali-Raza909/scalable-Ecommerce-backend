@@ -1,4 +1,8 @@
-use axum::{extract::{Extension, State}, Json};
+use axum::{
+    extract::{Extension, State},
+    http::StatusCode,
+    Json,
+};
 use common::Claims;
 use uuid::Uuid;
 
@@ -17,7 +21,7 @@ pub async fn create_order(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Extension(token): Extension<String>,
-) -> Result<Json<OrderResponse>, AppError> {
+) -> Result<(StatusCode, Json<OrderResponse>), AppError> {
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| AppError::BadRequest("Invalid user id in token".to_string()))?;
 
@@ -81,7 +85,7 @@ pub async fn create_order(
         tracing::warn!("Failed to send notification for order {}: {:?}", order.id, e);
     }
 
-    Ok(Json(OrderResponse::from_order(order, items)))
+    Ok((StatusCode::CREATED, Json(OrderResponse::from_order(order, items))))
 }
 
 async fn compensate(state: &AppState, reserved: &[ReservedStock], order_id: Uuid) {
