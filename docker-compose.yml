@@ -178,12 +178,6 @@ services:
     depends_on:
       payment-db:
         condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.payment-service.rule=PathPrefix(`/api/payments`)"
-      - "traefik.http.routers.payment-service.middlewares=payment-strip"
-      - "traefik.http.middlewares.payment-strip.stripprefix.prefixes=/api"
-      - "traefik.http.services.payment-service.loadbalancer.server.port=8085"
 
   notification-service:
     build:
@@ -191,12 +185,6 @@ services:
       dockerfile: services/notification-service/Dockerfile
     environment:
       SENDGRID_API_KEY: ${SENDGRID_API_KEY}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.notification-service.rule=PathPrefix(`/api/notifications`)"
-      - "traefik.http.routers.notification-service.middlewares=notify-strip"
-      - "traefik.http.middlewares.notify-strip.stripprefix.prefixes=/api"
-      - "traefik.http.services.notification-service.loadbalancer.server.port=8086"
 
 volumes:
   user_db_data:
