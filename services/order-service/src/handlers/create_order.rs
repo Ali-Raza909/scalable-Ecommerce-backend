@@ -77,6 +77,20 @@ pub async fn create_order(
         return Err(e);
     }
 
+    // payment is committed (point of no return); record it: pending -> paid.
+    // best-effort like the steps below, nothing left to roll back.
+    let order = match db::update_order_status(&state.pool, order.id, "paid").await {
+        Ok(Some(updated)) => updated,
+        Ok(None) => {
+            tracing::warn!("Order {} vanished after payment", order.id);
+            order
+        }
+        Err(e) => {
+            tracing::warn!("Failed to mark order {} paid: {:?}", order.id, e);
+            order
+        }
+    };
+
     // clear the cart and notify 
     if let Err(e) = state.client.clear_cart(&token).await {
         tracing::warn!("Failed to clear cart for user {}: {:?}", user_id, e);
