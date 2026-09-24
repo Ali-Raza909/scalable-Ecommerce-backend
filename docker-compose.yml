@@ -1,4 +1,19 @@
 services:
+  gateway:
+    image: traefik:v3.6
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - default
+
   user-db:
     image: postgres:16
     environment:
@@ -25,8 +40,12 @@ services:
     depends_on:
       user-db:
         condition: service_healthy
-    ports:
-      - "8081:8081"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.user-service.rule=PathPrefix(`/api/users`)"
+      - "traefik.http.routers.user-service.middlewares=user-strip"
+      - "traefik.http.middlewares.user-strip.stripprefix.prefixes=/api/users"
+      - "traefik.http.services.user-service.loadbalancer.server.port=8081"
 
   product-db:
     image: postgres:16
@@ -54,8 +73,12 @@ services:
     depends_on:
       product-db:
         condition: service_healthy
-    ports:
-      - "8082:8082"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.product-service.rule=PathPrefix(`/api/products`)"
+      - "traefik.http.routers.product-service.middlewares=product-strip"
+      - "traefik.http.middlewares.product-strip.stripprefix.prefixes=/api"
+      - "traefik.http.services.product-service.loadbalancer.server.port=8082"
 
   cart-redis:
     image: redis:7-alpine
@@ -77,8 +100,12 @@ services:
     depends_on:
       cart-redis:
         condition: service_healthy
-    ports:
-      - "8083:8083"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cart-service.rule=PathPrefix(`/api/cart`)"
+      - "traefik.http.routers.cart-service.middlewares=cart-strip"
+      - "traefik.http.middlewares.cart-strip.stripprefix.prefixes=/api"
+      - "traefik.http.services.cart-service.loadbalancer.server.port=8083"
 
   order-db:
     image: postgres:16
@@ -117,8 +144,12 @@ services:
         condition: service_started
       cart-service:
         condition: service_started
-    ports:
-      - "8084:8084"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.order-service.rule=PathPrefix(`/api/orders`)"
+      - "traefik.http.routers.order-service.middlewares=order-strip"
+      - "traefik.http.middlewares.order-strip.stripprefix.prefixes=/api"
+      - "traefik.http.services.order-service.loadbalancer.server.port=8084"
 
   payment-db:
     image: postgres:16
@@ -147,8 +178,12 @@ services:
     depends_on:
       payment-db:
         condition: service_healthy
-    ports:
-      - "8085:8085"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.payment-service.rule=PathPrefix(`/api/payments`)"
+      - "traefik.http.routers.payment-service.middlewares=payment-strip"
+      - "traefik.http.middlewares.payment-strip.stripprefix.prefixes=/api"
+      - "traefik.http.services.payment-service.loadbalancer.server.port=8085"
 
   notification-service:
     build:
@@ -156,8 +191,12 @@ services:
       dockerfile: services/notification-service/Dockerfile
     environment:
       SENDGRID_API_KEY: ${SENDGRID_API_KEY}
-    ports:
-      - "8086:8086"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.notification-service.rule=PathPrefix(`/api/notifications`)"
+      - "traefik.http.routers.notification-service.middlewares=notify-strip"
+      - "traefik.http.middlewares.notify-strip.stripprefix.prefixes=/api"
+      - "traefik.http.services.notification-service.loadbalancer.server.port=8086"
 
 volumes:
   user_db_data:
