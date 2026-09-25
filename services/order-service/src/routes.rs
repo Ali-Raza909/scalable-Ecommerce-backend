@@ -6,7 +6,9 @@ use crate::state::AppState;
 pub fn create_router(state: AppState) -> Router {
     let jwt_secret = state.jwt_secret.clone();
 
-    let public_routes = Router::new().route("/health", get(handlers::health));
+    let public_routes = Router::new()
+        .route("/health", get(handlers::health))
+        .route("/orders/:id/payment-confirm", post(handlers::payment_confirm));
 
     let protected_routes = Router::new()
         .route("/orders", post(handlers::create_order).get(handlers::list_orders))

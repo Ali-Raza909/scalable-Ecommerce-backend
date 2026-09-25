@@ -46,7 +46,10 @@ pub async fn safepay_webhook(
 
     match state_field {
         "TRACKER_ENDED" | "PAID" => {
-            db::update_payment_status_by_ref(&state.pool, token, "succeeded").await?;
+            let updated = db::update_payment_status_by_ref(&state.pool, token, "succeeded").await?;
+            if updated.is_some() {
+                notify_order_confirmed(&state, token).await;
+            }
         }
         "FAILED" | "CANCELLED" => {
             db::update_payment_status_by_ref(&state.pool, token, "failed").await?;
@@ -57,4 +60,37 @@ pub async fn safepay_webhook(
     }
 
     Ok(StatusCode::OK)
+}
+
+async fn notify_order_confirmed(state: &AppState, token: &str) {
+    let order_id = match db::get_payment_by_ref(&state.pool, token).await {
+        Ok(Some(p)) => p.order_id,
+        _ => {
+            tracing::warn!("Webhook token not found: {}", token);
+            return;
+        }
+    };
+
+    let order_service_url =
+        std::env::var("ORDER_SERVICE_URL").expect("ORDER_SERVICE_URL not set");
+
+    match state
+        .http
+        .post(format!("{}/orders/{}/payment-confirm", order_service_url, order_id))
+        .json(&serde_json::json!({ "status": "paid" }))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {}
+        Ok(resp) => tracing::warn!(
+            "Order confirm failed for order {}: status {}",
+            order_id,
+            resp.status()
+        ),
+        Err(e) => tracing::warn!(
+            "Order confirm failed for order {}: {}",
+            order_id,
+            e
+        ),
+    }
 }
