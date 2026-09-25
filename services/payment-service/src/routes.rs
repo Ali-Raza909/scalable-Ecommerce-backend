@@ -1,12 +1,14 @@
 use axum::{routing::{get, post}, Router};
-use sqlx::PgPool;
 
 use crate::handlers;
+use crate::state::AppState;
 
-pub fn create_router(pool: PgPool) -> Router {
+pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(handlers::health))
         .route("/payments", post(handlers::create_payment))
-        .route("/webhooks/stripe", post(handlers::stripe_webhook))
-        .with_state(pool)
+        .route("/webhooks/safepay", post(handlers::safepay_webhook))
+        .route("/payments/success", get(handlers::payment_success))
+        .route("/payments/cancel", get(handlers::payment_cancel))
+        .with_state(state)
 }
