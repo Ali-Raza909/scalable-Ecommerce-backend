@@ -176,6 +176,7 @@ services:
       SAFEPAY_API_KEY: ${SAFEPAY_API_KEY}
       SAFEPAY_WEBHOOK_SECRET: ${SAFEPAY_WEBHOOK_SECRET}
       SAFEPAY_ENV: sandbox
+      ORDER_SERVICE_URL: http://order-service:8084
     depends_on:
       payment-db:
         condition: service_healthy
