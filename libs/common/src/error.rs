@@ -30,6 +30,9 @@ pub enum AppError {
 
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("Payment provider request failed")]
+    PaymentFailed,
 }
 
 impl IntoResponse for AppError {
@@ -56,6 +59,13 @@ impl IntoResponse for AppError {
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::ServiceUnavailable(msg) => {
                 (StatusCode::SERVICE_UNAVAILABLE, msg.clone())
+            }
+            AppError::PaymentFailed => {
+                tracing::error!("Payment provider request failed");
+                (
+                    StatusCode::BAD_GATEWAY,
+                    "Payment provider request failed".to_string(),
+                )
             }
         };
 
