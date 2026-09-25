@@ -8,20 +8,99 @@ use crate::models::{CreatePaymentRequest, CreatePaymentResponse};
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
-struct SafepayInitResponse {
-    data: SafepayInitData,
+struct SafepaySessionResponse {
+    data: SafepaySessionData,
 }
 
 #[derive(Debug, Deserialize)]
-struct SafepayInitData {
+struct SafepaySessionData {
+    tracker: SafepayTracker,
+}
+
+#[derive(Debug, Deserialize)]
+struct SafepayTracker {
     token: String,
 }
 
-pub fn build_checkout_url(token: &str, order_id: Uuid) -> String {
+#[derive(Debug, Deserialize)]
+struct SafepayPassportResponse {
+    data: String,
+}
+
+pub fn build_checkout_url(tracker: &str, tbt: &str, order_id: Uuid) -> String {
     format!(
-        "https://sandbox.api.getsafepay.com/components?env=sandbox&beacon={}&source=custom&order_id={}&success_url=http://localhost:8085/payments/success&cancel_url=http://localhost:8085/payments/cancel",
-        token, order_id
+        "https://sandbox.api.getsafepay.com/embedded/?environment=sandbox&tbt={}&tracker={}&source=hosted&order_id={}&redirect_url=http://localhost:8085/payments/success&cancel_url=http://localhost:8085/payments/cancel",
+        tbt, tracker, order_id
     )
+}
+
+async fn create_payment_session(state: &AppState, input: &CreatePaymentRequest) -> Result<String, AppError> {
+    let api_key = std::env::var("SAFEPAY_API_KEY").expect("SAFEPAY_API_KEY not set");
+    let merchant_secret =
+        std::env::var("SAFEPAY_WEBHOOK_SECRET").expect("SAFEPAY_WEBHOOK_SECRET not set");
+
+    let resp = state
+        .http
+        .post("https://sandbox.api.getsafepay.com/order/payments/v3/")
+        .header("X-SFPY-MERCHANT-SECRET", merchant_secret)
+        .json(&serde_json::json!({
+            "merchant_api_key": api_key,
+            "intent": "CYBERSOURCE",
+            "mode": "payment",
+            "entry_mode": "raw",
+            "currency": "PKR",
+            "amount": input.amount_cents,
+            "metadata": { "order_id": input.order_id.to_string() }
+        }))
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("Safepay create session failed: {}", e);
+            AppError::PaymentFailed
+        })?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        tracing::error!("Safepay create session returned error: {}", body);
+        return Err(AppError::PaymentFailed);
+    }
+
+    let parsed: SafepaySessionResponse = resp.json().await.map_err(|e| {
+        tracing::error!("Failed to parse Safepay session response: {}", e);
+        AppError::PaymentFailed
+    })?;
+
+    Ok(parsed.data.tracker.token)
+}
+
+async fn create_passport_token(state: &AppState) -> Result<String, AppError> {
+    let merchant_secret =
+        std::env::var("SAFEPAY_WEBHOOK_SECRET").expect("SAFEPAY_WEBHOOK_SECRET not set");
+
+    let resp = state
+        .http
+        .post("https://sandbox.api.getsafepay.com/client/passport/v1/token")
+        .header("X-SFPY-MERCHANT-SECRET", merchant_secret)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("Safepay passport request failed: {}", e);
+            AppError::PaymentFailed
+        })?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        tracing::error!("Safepay passport returned error: {}", body);
+        return Err(AppError::PaymentFailed);
+    }
+
+    let parsed: SafepayPassportResponse = resp.json().await.map_err(|e| {
+        tracing::error!("Failed to parse Safepay passport response: {}", e);
+        AppError::PaymentFailed
+    })?;
+
+    Ok(parsed.data)
 }
 
 pub async fn create_payment(
@@ -34,47 +113,19 @@ pub async fn create_payment(
         ));
     }
 
-    let amount_pkr = input.amount_cents as f64 / 100.0;
-    let api_key =
-        std::env::var("SAFEPAY_API_KEY").expect("SAFEPAY_API_KEY not set");
-
-    let resp = state
-        .http
-        .post("https://sandbox.api.getsafepay.com/order/v1/init")
-        .json(&serde_json::json!({
-            "client": api_key,
-            "amount": amount_pkr,
-            "currency": "PKR",
-            "environment": "sandbox"
-        }))
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("Safepay init request failed: {}", e);
-            AppError::PaymentFailed
-        })?;
-
-    if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        tracing::error!("Safepay init returned error: {}", body);
-        return Err(AppError::PaymentFailed);
-    }
-
-    let parsed: SafepayInitResponse = resp.json().await.map_err(|e| {
-        tracing::error!("Failed to parse Safepay response: {}", e);
-        AppError::PaymentFailed
-    })?;
+    let tracker_token = create_payment_session(&state, &input).await?;
+    let tbt = create_passport_token(&state).await?;
 
     let payment = db::create_payment(
         &state.pool,
         input.order_id,
         input.user_id,
         input.amount_cents,
-        &parsed.data.token,
+        &tracker_token,
     )
     .await?;
 
-    let checkout_url = build_checkout_url(&parsed.data.token, input.order_id);
+    let checkout_url = build_checkout_url(&tracker_token, &tbt, input.order_id);
 
     Ok((
         StatusCode::CREATED,
