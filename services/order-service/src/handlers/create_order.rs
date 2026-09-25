@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::clients::Product;
 use crate::db::{self, NewOrderItem};
 use crate::error::AppError;
-use crate::models::OrderResponse;
+use crate::models::{CheckoutResponse, OrderResponse};
 use crate::state::AppState;
 
 struct ReservedStock {
@@ -21,7 +21,7 @@ pub async fn create_order(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Extension(token): Extension<String>,
-) -> Result<(StatusCode, Json<OrderResponse>), AppError> {
+) -> Result<(StatusCode, Json<CheckoutResponse>), AppError> {
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| AppError::BadRequest("Invalid user id in token".to_string()))?;
 
@@ -66,40 +66,41 @@ pub async fn create_order(
     }
 
     // persist the order as pending (own database, single transaction).
-    let (order, items) = db::create_order_with_items(&state.pool, user_id, total_cents, &order_items)
-        .await?;
+    let (order, items) = db::create_order_with_items(
+        &state.pool,
+        user_id,
+        &claims.email,
+        total_cents,
+        &order_items,
+    )
+    .await?;
 
-    // charge the payment via payment service and if it fails, roll back the reserved stock and mark the order as cancelled
+    // request an async payment via payment service; if it fails, roll back the reserved stock and mark the order as cancelled
       
-    if let Err(e) = state.client.request_payment(order.id, user_id, total_cents).await {
-        tracing::error!("Payment failed for order {}: {:?}", order.id, e);
-        compensate(&state, &reserved, order.id).await;
-        return Err(e);
-    }
-
-    // payment is committed (point of no return); record it: pending -> paid.
-    // best-effort like the steps below, nothing left to roll back.
-    let order = match db::update_order_status(&state.pool, order.id, "paid").await {
-        Ok(Some(updated)) => updated,
-        Ok(None) => {
-            tracing::warn!("Order {} vanished after payment", order.id);
-            order
-        }
+    let checkout_url = match state.client.request_payment(order.id, user_id, total_cents).await {
+        Ok(url) => url,
         Err(e) => {
-            tracing::warn!("Failed to mark order {} paid: {:?}", order.id, e);
-            order
+            tracing::error!("Payment init failed for order {}: {:?}", order.id, e);
+            compensate(&state, &reserved, order.id).await;
+            return Err(e);
         }
     };
 
-    // clear the cart and notify 
+    // order stays 'pending'; the webhook-driven payment-confirm marks it paid.
+    // cart is cleared now (only the caller's token can do this); notification
+    // moves to payment-confirm so it only fires after payment actually succeeds.
+
     if let Err(e) = state.client.clear_cart(&token).await {
         tracing::warn!("Failed to clear cart for user {}: {:?}", user_id, e);
     }
-    if let Err(e) = state.client.send_notification(order.id, user_id, &claims.email).await {
-        tracing::warn!("Failed to send notification for order {}: {:?}", order.id, e);
-    }
 
-    Ok((StatusCode::CREATED, Json(OrderResponse::from_order(order, items))))
+    Ok((
+        StatusCode::CREATED,
+        Json(CheckoutResponse {
+            order: OrderResponse::from_order(order, items),
+            checkout_url,
+        }),
+    ))
 }
 
 async fn compensate(state: &AppState, reserved: &[ReservedStock], order_id: Uuid) {

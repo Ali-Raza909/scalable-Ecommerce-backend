@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub struct Order {
     pub id: Uuid,
     pub user_id: Uuid,
+    pub email: String,
     pub status: String,
     pub total_cents: i32,
     pub created_at: DateTime<Utc>,
@@ -43,7 +44,18 @@ impl OrderResponse {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct CheckoutResponse {
+    pub order: OrderResponse,
+    pub checkout_url: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpdateStatusRequest {
+    pub status: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PaymentConfirmRequest {
     pub status: String,
 }

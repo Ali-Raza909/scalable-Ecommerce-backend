@@ -11,7 +11,7 @@ pub struct NewOrderItem {
 
 pub async fn get_order_by_id(pool: &PgPool, order_id: Uuid) -> Result<Option<Order>, sqlx::Error> {
     sqlx::query_as::<_, Order>(
-        "SELECT id, user_id, status, total_cents, created_at FROM orders WHERE id = $1",
+        "SELECT id, user_id, email, status, total_cents, created_at FROM orders WHERE id = $1",
     )
     .bind(order_id)
     .fetch_optional(pool)
@@ -30,7 +30,7 @@ pub async fn get_order_items(pool: &PgPool, order_id: Uuid) -> Result<Vec<OrderI
 
 pub async fn get_orders_by_user_id(pool: &PgPool, user_id: Uuid) -> Result<Vec<Order>, sqlx::Error> {
     sqlx::query_as::<_, Order>(
-        "SELECT id, user_id, status, total_cents, created_at FROM orders \
+        "SELECT id, user_id, email, status, total_cents, created_at FROM orders \
          WHERE user_id = $1 ORDER BY created_at DESC",
     )
     .bind(user_id)
@@ -41,16 +41,18 @@ pub async fn get_orders_by_user_id(pool: &PgPool, user_id: Uuid) -> Result<Vec<O
 pub async fn create_order_with_items(
     pool: &PgPool,
     user_id: Uuid,
+    email: &str,
     total_cents: i32,
     items: &[NewOrderItem],
 ) -> Result<(Order, Vec<OrderItem>), sqlx::Error> {
     let mut tx = pool.begin().await?;
 
     let order = sqlx::query_as::<_, Order>(
-        "INSERT INTO orders (user_id, total_cents) VALUES ($1, $2) \
-         RETURNING id, user_id, status, total_cents, created_at",
+        "INSERT INTO orders (user_id, email, total_cents) VALUES ($1, $2, $3) \
+         RETURNING id, user_id, email, status, total_cents, created_at",
     )
     .bind(user_id)
+    .bind(email)
     .bind(total_cents)
     .fetch_one(&mut *tx)
     .await?;
@@ -86,6 +88,19 @@ pub async fn update_order_status(
          RETURNING id, user_id, status, total_cents, created_at",
     )
     .bind(status)
+    .bind(order_id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn mark_order_paid_if_pending(
+    pool: &PgPool,
+    order_id: Uuid,
+) -> Result<Option<Order>, sqlx::Error> {
+    sqlx::query_as::<_, Order>(
+        "UPDATE orders SET status = 'paid' WHERE id = $1 AND status = 'pending' \
+         RETURNING id, user_id, email, status, total_cents, created_at",
+    )
     .bind(order_id)
     .fetch_optional(pool)
     .await

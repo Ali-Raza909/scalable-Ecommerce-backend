@@ -133,7 +133,12 @@ impl ServiceClient {
         }
     }
 
-    pub async fn request_payment(&self, order_id: Uuid, user_id: Uuid, amount_cents: i32) -> Result<(), AppError> {
+    pub async fn request_payment(
+        &self,
+        order_id: Uuid,
+        user_id: Uuid,
+        amount_cents: i32,
+    ) -> Result<String, AppError> {
         let resp = self
             .http
             .post(format!("{}/payments", self.payment_service_url))
@@ -146,13 +151,17 @@ impl ServiceClient {
             .await
             .map_err(|e| AppError::ServiceUnavailable(format!("Payment service unreachable: {e}")))?;
 
-        if resp.status().is_success() {
-            Ok(())
-        } else {
-            Err(AppError::ServiceUnavailable(format!(
-                "Payment service returned status {}",
-                resp.status()
-            )))
+        match resp.status() {
+            s if s.is_success() => {
+                let parsed: CreatePaymentResponse = resp
+                    .json()
+                    .await
+                    .map_err(|e| AppError::Internal(anyhow::anyhow!("Payment service returned invalid JSON: {e}")))?;
+                Ok(parsed.checkout_url)
+            }
+            s => Err(AppError::ServiceUnavailable(format!(
+                "Payment service returned status {s}"
+            ))),
         }
     }
 
@@ -194,4 +203,11 @@ pub struct CartItem {
 #[derive(Debug, Deserialize)]
 pub struct Product {
     pub price_cents: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreatePaymentResponse {
+    #[allow(dead_code)]
+    pub payment: serde_json::Value,
+    pub checkout_url: String,
 }
