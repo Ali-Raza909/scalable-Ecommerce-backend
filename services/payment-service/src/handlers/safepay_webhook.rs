@@ -1,12 +1,60 @@
-use axum::{extract::State, http::StatusCode, body::Bytes, http::HeaderMap};
+use axum::{body::Bytes, extract::State, http::{HeaderMap, StatusCode}};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
+use sha2::{Sha256, Sha512};
 
 use crate::db;
 use crate::error::AppError;
 use crate::state::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
+type HmacSha512 = Hmac<Sha512>;
+
+fn hex_hmac_sha256(key: &[u8], data: &[u8]) -> String {
+    let mut mac = HmacSha256::new_from_slice(key).expect("hmac key");
+    mac.update(data);
+    hex::encode(mac.finalize().into_bytes())
+}
+
+fn hex_hmac_sha512(key: &[u8], data: &[u8]) -> String {
+    let mut mac = HmacSha512::new_from_slice(key).expect("hmac key");
+    mac.update(data);
+    hex::encode(mac.finalize().into_bytes())
+}
+
+fn verify_signature(signature: &str, headers: &HeaderMap, body: &[u8], secret: &[u8]) -> bool {
+    let variants: Vec<String> = vec![
+        hex_hmac_sha512(secret, body),
+        hex_hmac_sha256(secret, body),
+    ];
+
+    let scheme_c = headers
+        .get("X-SFPY-TIMESTAMP")
+        .and_then(|v| v.to_str().ok())
+        .map(|ts| {
+            let mut signed = Vec::with_capacity(ts.len() + 1 + body.len());
+            signed.extend_from_slice(ts.as_bytes());
+            signed.push(b'.');
+            signed.extend_from_slice(body);
+            signed
+        }).map(|mut signed_bytes| {
+            let key = STANDARD.decode(secret).unwrap_or_default();
+            if key.is_empty() {
+                return None;
+            }
+            signed_bytes = std::mem::take(&mut signed_bytes);
+            Some(hex_hmac_sha256(&key, &signed_bytes))
+        })
+        .flatten();
+
+    if let Some(c) = scheme_c {
+        if c == signature {
+            return true;
+        }
+    }
+
+    variants.iter().any(|v| v == signature)
+}
 
 pub async fn safepay_webhook(
     State(state): State<AppState>,
@@ -14,7 +62,7 @@ pub async fn safepay_webhook(
     body: Bytes,
 ) -> Result<StatusCode, AppError> {
     // TEMPORARY defensive log: confirm real payload shape before trusting
-    // the state/token field extraction below (Safepay docs are thin here).
+    // the event extraction below (Safepay docs are thin here).
     tracing::info!("Raw Safepay webhook payload: {}", String::from_utf8_lossy(&body));
 
     let signature = headers
@@ -25,15 +73,7 @@ pub async fn safepay_webhook(
     let secret =
         std::env::var("SAFEPAY_WEBHOOK_SECRET").expect("SAFEPAY_WEBHOOK_SECRET not set");
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .map_err(|e| {
-            tracing::error!("Invalid webhook secret: {}", e);
-            AppError::PaymentFailed
-        })?;
-    mac.update(&body);
-    let expected = hex::encode(mac.finalize().into_bytes());
-
-    if expected != signature {
+    if !verify_signature(signature, &headers, &body, secret.as_bytes()) {
         tracing::warn!("Webhook signature mismatch");
         return Err(AppError::Unauthorized);
     }
@@ -41,21 +81,35 @@ pub async fn safepay_webhook(
     let event: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|_| AppError::BadRequest("Invalid JSON".into()))?;
 
-    let state_field = event["data"]["state"].as_str().unwrap_or("");
-    let token = event["data"]["token"].as_str().unwrap_or("");
+    let tracker = event["data"]["tracker"]
+        .as_str()
+        .or_else(|| event["data"]["token"].as_str())
+        .unwrap_or("");
 
-    match state_field {
-        "TRACKER_ENDED" | "PAID" => {
-            let updated = db::update_payment_status_by_ref(&state.pool, token, "succeeded").await?;
+    let state_field = event["data"]["state"].as_str().unwrap_or("");
+    let event_type = event["type"].as_str().unwrap_or("");
+
+    let succeeded = event_type == "payment.succeeded"
+        || matches!(state_field, "TRACKER_ENDED" | "PAID");
+    let failed = event_type == "payment.failed"
+        || matches!(state_field, "FAILED" | "CANCELLED" | "TRACKER_FAILED");
+
+    match (succeeded, failed) {
+        (true, _) => {
+            let updated = db::update_payment_status_by_ref(&state.pool, tracker, "succeeded").await?;
             if updated.is_some() {
-                notify_order_confirmed(&state, token).await;
+                notify_order_confirmed(&state, tracker).await;
             }
         }
-        "FAILED" | "CANCELLED" => {
-            db::update_payment_status_by_ref(&state.pool, token, "failed").await?;
+        (_, true) => {
+            db::update_payment_status_by_ref(&state.pool, tracker, "failed").await?;
         }
-        other => {
-            tracing::info!("Unhandled Safepay webhook state: {}", other);
+        _ => {
+            tracing::info!(
+                "Unhandled Safepay webhook event (type={}, state={})",
+                event_type,
+                state_field
+            );
         }
     }
 
