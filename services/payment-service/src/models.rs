@@ -19,3 +19,9 @@ pub struct CreatePaymentRequest {
     pub user_id: Uuid,
     pub amount_cents: i32,
 }
+
+#[derive(Debug, Serialize)]
+pub struct CreatePaymentResponse {
+    pub payment: Payment,
+    pub checkout_url: String,
+}
