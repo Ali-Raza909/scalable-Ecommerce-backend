@@ -173,8 +173,9 @@ services:
       dockerfile: services/payment-service/Dockerfile
     environment:
       DATABASE_URL: postgres://payment_svc:payment_svc_pw@payment-db:5432/payments
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      SAFEPAY_API_KEY: ${SAFEPAY_API_KEY}
+      SAFEPAY_WEBHOOK_SECRET: ${SAFEPAY_WEBHOOK_SECRET}
+      SAFEPAY_ENV: sandbox
     depends_on:
       payment-db:
         condition: service_healthy

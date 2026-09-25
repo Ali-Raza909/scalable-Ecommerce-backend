@@ -8,6 +8,7 @@ mod error;
 mod handlers;
 mod models;
 mod routes;
+mod state;
 
 #[tokio::main]
 async fn main() {
@@ -38,7 +39,11 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
-    let app = routes::create_router(pool).layer(TraceLayer::new_for_http());
+    let app = routes::create_router(state::AppState {
+        pool,
+        http: reqwest::Client::new(),
+    })
+    .layer(TraceLayer::new_for_http());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8085));
     tracing::info!("Payment service listening on {}", addr);
@@ -46,5 +51,3 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
-
-// tested ; all passed jiooooooo
