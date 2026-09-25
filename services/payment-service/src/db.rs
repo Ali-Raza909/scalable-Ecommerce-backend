@@ -23,6 +23,19 @@ pub async fn create_payment(
     .await
 }
 
+pub async fn get_payment_by_ref(
+    pool: &PgPool,
+    provider_ref: &str,
+) -> Result<Option<Payment>, sqlx::Error> {
+    sqlx::query_as::<_, Payment>(
+        "SELECT id, order_id, user_id, payment_provider_ref, amount_cents, status, created_at \
+         FROM payments WHERE payment_provider_ref = $1",
+    )
+    .bind(provider_ref)
+    .fetch_optional(pool)
+    .await
+}
+
 pub async fn update_payment_status_by_ref(
     pool: &PgPool,
     provider_ref: &str,
