@@ -9,13 +9,9 @@ use uuid::Uuid;
 use crate::clients::Product;
 use crate::db::{self, NewOrderItem};
 use crate::error::AppError;
+use crate::handlers::compensation::{self, StockUnit};
 use crate::models::{CheckoutResponse, OrderResponse};
 use crate::state::AppState;
-
-struct ReservedStock {
-    product_id: Uuid,
-    quantity: i32,
-}
 
 pub async fn create_order(
     State(state): State<AppState>,
@@ -35,8 +31,8 @@ pub async fn create_order(
     }
 
     // reserve stock for every item using product service, and in case of any failure, roll back the reserved stock and return an error
-    
-    let mut reserved: Vec<ReservedStock> = Vec::new();
+
+    let mut reserved: Vec<StockUnit> = Vec::new();
     let mut order_items: Vec<NewOrderItem> = Vec::new();
     let mut total_cents: i32 = 0;
 
@@ -48,12 +44,12 @@ pub async fn create_order(
         let product: Product = match state.client.decrement_stock(product_id, item.quantity).await {
             Ok(p) => p,
             Err(e) => {
-                restore_stock(&state, &reserved).await;
+                compensation::restore_stock(&state, &reserved).await;
                 return Err(e);
             }
         };
 
-        reserved.push(ReservedStock {
+        reserved.push(StockUnit {
             product_id,
             quantity: item.quantity,
         });
@@ -65,28 +61,42 @@ pub async fn create_order(
         });
     }
 
-    // persist the order as pending (own database, single transaction).
-    let (order, items) = db::create_order_with_items(
+    // persist the order as pending (own database, single transaction); on
+    // failure the reservations must be released too.
+    let (order, items) = match db::create_order_with_items(
         &state.pool,
         user_id,
         &claims.email,
         total_cents,
         &order_items,
     )
-    .await?;
+    .await
+    {
+        Ok(result) => result,
+        Err(e) => {
+            compensation::restore_stock(&state, &reserved).await;
+            return Err(e.into());
+        }
+    };
 
-    // request an async payment via payment service; if it fails, roll back the reserved stock and mark the order as cancelled
-      
+    // request an async payment via payment service; if it fails, cancel the order and restore the reserved stock
+
     let checkout_url = match state.client.request_payment(order.id, user_id, total_cents).await {
         Ok(url) => url,
         Err(e) => {
             tracing::error!("Payment init failed for order {}: {:?}", order.id, e);
-            compensate(&state, &reserved, order.id).await;
+            if let Err(ce) = compensation::cancel_order_and_restore_stock(&state, order.id).await {
+                tracing::error!(
+                    "Failed to cancel order {} and restore stock: {:?}",
+                    order.id,
+                    ce
+                );
+            }
             return Err(e);
         }
     };
 
-    // order stays 'pending'; the webhook-driven payment-confirm marks it paid.
+    // order stays 'pending'; the webhook-driven payment-confirm marks it paid (or cancelled).
     // cart is cleared now (only the caller's token can do this); notification
     // moves to payment-confirm so it only fires after payment actually succeeds.
 
@@ -101,23 +111,4 @@ pub async fn create_order(
             checkout_url,
         }),
     ))
-}
-
-async fn compensate(state: &AppState, reserved: &[ReservedStock], order_id: Uuid) {
-    restore_stock(state, reserved).await;
-    if let Err(e) = db::update_order_status(&state.pool, order_id, "cancelled").await {
-        tracing::error!("Failed to mark order {} cancelled: {:?}", order_id, e);
-    }
-}
-
-async fn restore_stock(state: &AppState, reserved: &[ReservedStock]) {
-    for r in reserved {
-        if let Err(e) = state.client.restore_stock(r.product_id, r.quantity).await {
-            tracing::error!(
-                "Failed to restore stock for product {}: {:?}",
-                r.product_id,
-                e
-            );
-        }
-    }
 }
