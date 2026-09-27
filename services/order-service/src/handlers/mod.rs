@@ -4,6 +4,7 @@ pub mod list_orders;
 pub mod get_order;
 pub mod update_order_status;
 pub mod payment_confirm;
+pub mod compensation;
 
 pub use health::health;
 pub use create_order::create_order;
