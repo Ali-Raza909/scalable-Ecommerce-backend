@@ -105,3 +105,16 @@ pub async fn mark_order_paid_if_pending(
     .fetch_optional(pool)
     .await
 }
+
+pub async fn mark_order_cancelled_if_pending(
+    pool: &PgPool,
+    order_id: Uuid,
+) -> Result<Option<Order>, sqlx::Error> {
+    sqlx::query_as::<_, Order>(
+        "UPDATE orders SET status = 'cancelled' WHERE id = $1 AND status = 'pending' \
+         RETURNING id, user_id, email, status, total_cents, created_at",
+    )
+    .bind(order_id)
+    .fetch_optional(pool)
+    .await
+}
