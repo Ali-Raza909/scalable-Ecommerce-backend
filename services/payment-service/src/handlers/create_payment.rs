@@ -37,7 +37,7 @@ pub fn build_checkout_url(tracker: &str, tbt: &str, order_id: Uuid) -> String {
 async fn create_payment_session(state: &AppState, input: &CreatePaymentRequest) -> Result<String, AppError> {
     let api_key = std::env::var("SAFEPAY_API_KEY").expect("SAFEPAY_API_KEY not set");
     let merchant_secret =
-        std::env::var("SAFEPAY_WEBHOOK_SECRET").expect("SAFEPAY_WEBHOOK_SECRET not set");
+        std::env::var("SAFEPAY_MERCHANT_SECRET").expect("SAFEPAY_MERCHANT_SECRET not set");
 
     let resp = state
         .http
@@ -75,7 +75,7 @@ async fn create_payment_session(state: &AppState, input: &CreatePaymentRequest) 
 
 async fn create_passport_token(state: &AppState) -> Result<String, AppError> {
     let merchant_secret =
-        std::env::var("SAFEPAY_WEBHOOK_SECRET").expect("SAFEPAY_WEBHOOK_SECRET not set");
+        std::env::var("SAFEPAY_MERCHANT_SECRET").expect("SAFEPAY_MERCHANT_SECRET not set");
 
     let resp = state
         .http

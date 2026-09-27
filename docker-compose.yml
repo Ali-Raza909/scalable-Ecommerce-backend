@@ -176,6 +176,7 @@ services:
     environment:
       DATABASE_URL: postgres://payment_svc:payment_svc_pw@payment-db:5432/payments
       SAFEPAY_API_KEY: ${SAFEPAY_API_KEY}
+      SAFEPAY_MERCHANT_SECRET: ${SAFEPAY_MERCHANT_SECRET}
       SAFEPAY_WEBHOOK_SECRET: ${SAFEPAY_WEBHOOK_SECRET}
       SAFEPAY_ENV: sandbox
       ORDER_SERVICE_URL: http://order-service:8084
