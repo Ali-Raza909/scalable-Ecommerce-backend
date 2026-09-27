@@ -171,8 +171,6 @@ services:
     build:
       context: .
       dockerfile: services/payment-service/Dockerfile
-    ports:
-      - "8085:8085"
     environment:
       DATABASE_URL: postgres://payment_svc:payment_svc_pw@payment-db:5432/payments
       SAFEPAY_API_KEY: ${SAFEPAY_API_KEY}
