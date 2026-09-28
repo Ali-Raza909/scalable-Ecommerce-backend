@@ -28,9 +28,11 @@ struct SafepayPassportResponse {
 }
 
 pub fn build_checkout_url(tracker: &str, tbt: &str, order_id: Uuid) -> String {
+    let public_base = std::env::var("PUBLIC_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:80".to_string());
     format!(
-        "https://sandbox.api.getsafepay.com/embedded/?environment=sandbox&tbt={}&tracker={}&source=hosted&order_id={}&redirect_url=http://localhost:8085/payments/success&cancel_url=http://localhost:8085/payments/cancel",
-        tbt, tracker, order_id
+        "https://sandbox.api.getsafepay.com/embedded/?environment=sandbox&tbt={}&tracker={}&source=hosted&order_id={}&redirect_url={}/api/orders/payment-result/{}/success&cancel_url={}/api/orders/payment-result/{}/cancelled",
+        tbt, tracker, order_id, public_base, order_id, public_base, order_id
     )
 }
 
