@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::db;
 use crate::error::AppError;
+use crate::handlers::compensation;
 use crate::models::{Order, UpdateStatusRequest};
 use crate::state::AppState;
 
@@ -36,6 +37,18 @@ pub async fn update_order_status(
             "Cannot transition from {} to {}",
             order.status, payload.status
         )));
+    }
+
+    // Cancelling an unpaid order must release its reserved stock. Guarded so a
+    // double PATCH restores inventory exactly once. paid -> cancelled is a
+    // refund path and intentionally does not touch inventory.
+    if order.status == "pending" && payload.status == "cancelled" {
+        let updated =
+            match compensation::cancel_order_and_restore_stock(&state, order_id).await? {
+                Some(o) => o,
+                None => order,
+            };
+        return Ok(Json(updated));
     }
 
     let updated = db::update_order_status(&state.pool, order_id, &payload.status)
