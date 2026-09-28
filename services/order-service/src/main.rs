@@ -1,5 +1,6 @@
 use sqlx::PgPool;
 use std::net::SocketAddr;
+use std::time::Duration;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -11,6 +12,7 @@ mod clients;
 mod db;
 mod error;
 mod handlers;
+mod jobs;
 mod models;
 mod routes;
 mod state;
@@ -58,6 +60,16 @@ async fn main() {
         client,
         jwt_secret,
     };
+
+    let grace_minutes = std::env::var("ORDER_TIMEOUT_MINUTES")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(15);
+    jobs::spawn_pending_order_timeout(
+        state.clone(),
+        Duration::from_secs(grace_minutes * 60),
+        Duration::from_secs(60),
+    );
 
     let app = routes::create_router(state).layer(TraceLayer::new_for_http());
 
