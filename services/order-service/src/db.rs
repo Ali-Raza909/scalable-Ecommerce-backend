@@ -1,6 +1,8 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use chrono::{DateTime, Utc};
+
 use crate::models::{Order, OrderItem};
 
 pub struct NewOrderItem {
@@ -117,4 +119,14 @@ pub async fn mark_order_cancelled_if_pending(
     .bind(order_id)
     .fetch_optional(pool)
     .await
+}
+
+pub async fn get_stale_pending_orders(
+    pool: &PgPool,
+    cutoff: DateTime<Utc>,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM orders WHERE status = 'pending' AND created_at < $1")
+        .bind(cutoff)
+        .fetch_all(pool)
+        .await
 }
