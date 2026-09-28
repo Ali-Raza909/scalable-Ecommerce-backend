@@ -138,7 +138,44 @@ async fn confirm_order(state: &AppState, tracker: &str, status: &str) {
         .send()
         .await
     {
-        Ok(resp) if resp.status().is_success() => {}
+        Ok(resp) if resp.status().is_success() => {
+            if status == "paid" {
+                // Distinguish a genuine pending -> paid flip from a late payment
+                // that arrived after the order was already cancelled (e.g. by the
+                // timeout job) or was already paid. Money has moved for an order
+                // we will not fulfil: surface it loudly and flag the payment.
+                match resp.json::<serde_json::Value>().await {
+                    Ok(body) => {
+                        let order_status = body["order_status"].as_str().unwrap_or("unknown");
+                        if order_status != "paid" {
+                            tracing::error!(
+                                "LATE PAYMENT: order {} is '{}' but payment {} was confirmed paid; \
+                                 marking paid_after_cancel -- manual refund required",
+                                order_id, order_status, tracker
+                            );
+                            if let Err(e) = db::update_payment_status_by_ref(
+                                &state.pool,
+                                tracker,
+                                "paid_after_cancel",
+                            )
+                            .await
+                            {
+                                tracing::error!(
+                                    "Failed to mark payment {} paid_after_cancel: {:?}",
+                                    tracker,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => tracing::warn!(
+                        "Failed to parse order-confirm response for order {}: {}",
+                        order_id,
+                        e
+                    ),
+                }
+            }
+        }
         Ok(resp) => tracing::warn!(
             "Order confirm failed for order {}: status {}",
             order_id,
