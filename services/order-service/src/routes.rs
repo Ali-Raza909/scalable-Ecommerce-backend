@@ -8,7 +8,11 @@ pub fn create_router(state: AppState) -> Router {
 
     let public_routes = Router::new()
         .route("/health", get(handlers::health))
-        .route("/orders/:id/payment-confirm", post(handlers::payment_confirm));
+        .route("/orders/:id/payment-confirm", post(handlers::payment_confirm))
+        .route(
+            "/orders/payment-result/:id/:result",
+            get(handlers::payment_result),
+        );
 
     let protected_routes = Router::new()
         .route("/orders", post(handlers::create_order).get(handlers::list_orders))
