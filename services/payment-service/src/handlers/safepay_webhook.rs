@@ -98,11 +98,14 @@ pub async fn safepay_webhook(
         (true, _) => {
             let updated = db::update_payment_status_by_ref(&state.pool, tracker, "succeeded").await?;
             if updated.is_some() {
-                notify_order_confirmed(&state, tracker).await;
+                confirm_order(&state, tracker, "paid").await;
             }
         }
         (_, true) => {
-            db::update_payment_status_by_ref(&state.pool, tracker, "failed").await?;
+            let updated = db::update_payment_status_by_ref(&state.pool, tracker, "failed").await?;
+            if updated.is_some() {
+                confirm_order(&state, tracker, "cancelled").await;
+            }
         }
         _ => {
             tracing::info!(
@@ -116,11 +119,11 @@ pub async fn safepay_webhook(
     Ok(StatusCode::OK)
 }
 
-async fn notify_order_confirmed(state: &AppState, token: &str) {
-    let order_id = match db::get_payment_by_ref(&state.pool, token).await {
+async fn confirm_order(state: &AppState, tracker: &str, status: &str) {
+    let order_id = match db::get_payment_by_ref(&state.pool, tracker).await {
         Ok(Some(p)) => p.order_id,
         _ => {
-            tracing::warn!("Webhook token not found: {}", token);
+            tracing::warn!("Webhook token not found: {}", tracker);
             return;
         }
     };
@@ -131,7 +134,7 @@ async fn notify_order_confirmed(state: &AppState, token: &str) {
     match state
         .http
         .post(format!("{}/orders/{}/payment-confirm", order_service_url, order_id))
-        .json(&serde_json::json!({ "status": "paid" }))
+        .json(&serde_json::json!({ "status": status }))
         .send()
         .await
     {
