@@ -67,28 +67,38 @@ impl ServiceClient {
             )));
         }
 
-        resp.json::<CartResponse>()
-            .await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("Cart service returned invalid JSON: {e}")))
+        resp.json::<CartResponse>().await.map_err(|e| {
+            AppError::Internal(anyhow::anyhow!("Cart service returned invalid JSON: {e}"))
+        })
     }
 
-    pub async fn decrement_stock(&self, product_id: Uuid, quantity: i32) -> Result<Product, AppError> {
+    pub async fn decrement_stock(
+        &self,
+        product_id: Uuid,
+        quantity: i32,
+    ) -> Result<Product, AppError> {
         let resp = self
             .http
-            .patch(format!("{}/products/{}/stock", self.product_service_url, product_id))
+            .patch(format!(
+                "{}/products/{}/stock",
+                self.product_service_url, product_id
+            ))
             .json(&serde_json::json!({ "delta": -quantity }))
             .send()
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("Product service unreachable: {e}")))?;
+            .map_err(|e| {
+                AppError::ServiceUnavailable(format!("Product service unreachable: {e}"))
+            })?;
 
         match resp.status() {
             StatusCode::CONFLICT => Err(AppError::Conflict(format!(
                 "Insufficient stock for product {product_id}"
             ))),
-            s if s.is_success() => resp
-                .json::<Product>()
-                .await
-                .map_err(|e| AppError::Internal(anyhow::anyhow!("Product service returned invalid JSON: {e}"))),
+            s if s.is_success() => resp.json::<Product>().await.map_err(|e| {
+                AppError::Internal(anyhow::anyhow!(
+                    "Product service returned invalid JSON: {e}"
+                ))
+            }),
             s => Err(AppError::ServiceUnavailable(format!(
                 "Product service returned status {s}"
             ))),
@@ -98,11 +108,16 @@ impl ServiceClient {
     pub async fn restore_stock(&self, product_id: Uuid, quantity: i32) -> Result<(), AppError> {
         let resp = self
             .http
-            .patch(format!("{}/products/{}/stock", self.product_service_url, product_id))
+            .patch(format!(
+                "{}/products/{}/stock",
+                self.product_service_url, product_id
+            ))
             .json(&serde_json::json!({ "delta": quantity }))
             .send()
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("Product service unreachable: {e}")))?;
+            .map_err(|e| {
+                AppError::ServiceUnavailable(format!("Product service unreachable: {e}"))
+            })?;
 
         if resp.status().is_success() {
             Ok(())
@@ -149,14 +164,17 @@ impl ServiceClient {
             }))
             .send()
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("Payment service unreachable: {e}")))?;
+            .map_err(|e| {
+                AppError::ServiceUnavailable(format!("Payment service unreachable: {e}"))
+            })?;
 
         match resp.status() {
             s if s.is_success() => {
-                let parsed: CreatePaymentResponse = resp
-                    .json()
-                    .await
-                    .map_err(|e| AppError::Internal(anyhow::anyhow!("Payment service returned invalid JSON: {e}")))?;
+                let parsed: CreatePaymentResponse = resp.json().await.map_err(|e| {
+                    AppError::Internal(anyhow::anyhow!(
+                        "Payment service returned invalid JSON: {e}"
+                    ))
+                })?;
                 Ok(parsed.checkout_url)
             }
             s => Err(AppError::ServiceUnavailable(format!(
@@ -165,7 +183,12 @@ impl ServiceClient {
         }
     }
 
-    pub async fn send_notification(&self, order_id: Uuid, user_id: Uuid, email: &str) -> Result<(), AppError> {
+    pub async fn send_notification(
+        &self,
+        order_id: Uuid,
+        user_id: Uuid,
+        email: &str,
+    ) -> Result<(), AppError> {
         let resp = self
             .http
             .post(format!("{}/notifications", self.notification_service_url))
@@ -176,7 +199,9 @@ impl ServiceClient {
             }))
             .send()
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("Notification service unreachable: {e}")))?;
+            .map_err(|e| {
+                AppError::ServiceUnavailable(format!("Notification service unreachable: {e}"))
+            })?;
 
         if resp.status().is_success() {
             Ok(())

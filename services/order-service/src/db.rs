@@ -30,7 +30,10 @@ pub async fn get_order_items(pool: &PgPool, order_id: Uuid) -> Result<Vec<OrderI
     .await
 }
 
-pub async fn get_orders_by_user_id(pool: &PgPool, user_id: Uuid) -> Result<Vec<Order>, sqlx::Error> {
+pub async fn get_orders_by_user_id(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<Order>, sqlx::Error> {
     sqlx::query_as::<_, Order>(
         "SELECT id, user_id, email, status, total_cents, created_at FROM orders \
          WHERE user_id = $1 ORDER BY created_at DESC",

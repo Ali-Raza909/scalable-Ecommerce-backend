@@ -1,4 +1,7 @@
-use axum::{extract::{Extension, Path, State}, Json};
+use axum::{
+    extract::{Extension, Path, State},
+    Json,
+};
 use common::Claims;
 use uuid::Uuid;
 
@@ -11,7 +14,11 @@ use crate::state::AppState;
 fn valid_next_status(current: &str, requested: &str) -> bool {
     let allowed: &[&str] = match current {
         "pending" => &["paid", "cancelled"],
-        "paid" => &["shipped", "cancelled"],
+        // paid -> cancelled is intentionally BLOCKED: cancelling a paid order
+        // without a real (Safepay) refund would strand the customer's money
+        // while either holding stock or reselling it. Refunds need the refund
+        // API + a new state machine branch; that is a feature of its own.
+        "paid" => &["shipped"],
         "shipped" => &["delivered"],
         _ => &[],
     };
@@ -40,14 +47,12 @@ pub async fn update_order_status(
     }
 
     // Cancelling an unpaid order must release its reserved stock. Guarded so a
-    // double PATCH restores inventory exactly once. paid -> cancelled is a
-    // refund path and intentionally does not touch inventory.
+    // double PATCH restores inventory exactly once.
     if order.status == "pending" && payload.status == "cancelled" {
-        let updated =
-            match compensation::cancel_order_and_restore_stock(&state, order_id).await? {
-                Some(o) => o,
-                None => order,
-            };
+        let updated = match compensation::cancel_order_and_restore_stock(&state, order_id).await? {
+            Some(o) => o,
+            None => order,
+        };
         return Ok(Json(updated));
     }
 

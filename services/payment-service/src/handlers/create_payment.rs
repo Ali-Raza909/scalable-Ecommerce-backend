@@ -28,15 +28,18 @@ struct SafepayPassportResponse {
 }
 
 pub fn build_checkout_url(tracker: &str, tbt: &str, order_id: Uuid) -> String {
-    let public_base = std::env::var("PUBLIC_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:80".to_string());
+    let public_base =
+        std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:80".to_string());
     format!(
         "https://sandbox.api.getsafepay.com/embedded/?environment=sandbox&tbt={}&tracker={}&source=hosted&order_id={}&redirect_url={}/api/orders/payment-result/{}/success&cancel_url={}/api/orders/payment-result/{}/cancelled",
         tbt, tracker, order_id, public_base, order_id, public_base, order_id
     )
 }
 
-async fn create_payment_session(state: &AppState, input: &CreatePaymentRequest) -> Result<String, AppError> {
+async fn create_payment_session(
+    state: &AppState,
+    input: &CreatePaymentRequest,
+) -> Result<String, AppError> {
     let api_key = std::env::var("SAFEPAY_API_KEY").expect("SAFEPAY_API_KEY not set");
     let merchant_secret =
         std::env::var("SAFEPAY_MERCHANT_SECRET").expect("SAFEPAY_MERCHANT_SECRET not set");

@@ -22,15 +22,20 @@ pub async fn auth_middleware(
         .strip_prefix("Bearer ")
         .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
 
-    let claims = decode_token(token, &jwt_secret)
-        .map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;
+    let claims =
+        decode_token(token, &jwt_secret).map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;
 
     request.extensions_mut().insert(claims);
 
     Ok(next.run(request).await)
 }
 
-pub fn create_token(user_id: &str, email: &str, role: &str, secret: &str) -> Result<String, common::AppError> {
+pub fn create_token(
+    user_id: &str,
+    email: &str,
+    role: &str,
+    secret: &str,
+) -> Result<String, common::AppError> {
     let now = Utc::now();
     let claims = Claims {
         sub: user_id.to_string(),

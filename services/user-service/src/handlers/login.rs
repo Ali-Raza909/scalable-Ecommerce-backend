@@ -28,8 +28,5 @@ pub async fn login(
     let token = auth::create_token(&user.id.to_string(), &user.email, &user.role, &jwt_secret)?;
     let expires_at = Utc::now() + chrono::Duration::hours(24);
 
-    Ok(Json(LoginResponse {
-        token,
-        expires_at,
-    }))
+    Ok(Json(LoginResponse { token, expires_at }))
 }

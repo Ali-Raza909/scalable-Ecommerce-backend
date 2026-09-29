@@ -1,4 +1,8 @@
-use axum::{middleware, routing::{delete, get, post}, Router};
+use axum::{
+    middleware,
+    routing::{delete, get, post},
+    Router,
+};
 use redis::Client;
 
 use crate::handlers;
@@ -9,7 +13,10 @@ pub fn create_router(redis_client: Client) -> Router {
     let public_routes = Router::new().route("/health", get(handlers::health));
 
     let protected_routes = Router::new()
-        .route("/cart", get(handlers::get_cart).delete(handlers::clear_cart))
+        .route(
+            "/cart",
+            get(handlers::get_cart).delete(handlers::clear_cart),
+        )
         .route("/cart/items", post(handlers::add_item))
         .route("/cart/items/:product_id", delete(handlers::remove_item))
         .layer(middleware::from_fn_with_state(

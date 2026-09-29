@@ -15,7 +15,10 @@ pub async fn payment_result(
         ),
         "cancelled" => (
             "Payment cancelled".to_string(),
-            format!("Payment for order {} was cancelled. No charge was made.", order_id),
+            format!(
+                "Payment for order {} was cancelled. No charge was made.",
+                order_id
+            ),
         ),
         other => {
             return (

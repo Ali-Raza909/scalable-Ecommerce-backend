@@ -1,4 +1,7 @@
-use axum::{extract::{Extension, Path, State}, Json};
+use axum::{
+    extract::{Extension, Path, State},
+    Json,
+};
 use common::Claims;
 use redis::AsyncCommands;
 use redis::Client;

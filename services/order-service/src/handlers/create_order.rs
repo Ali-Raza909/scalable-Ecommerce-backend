@@ -41,7 +41,11 @@ pub async fn create_order(
             AppError::BadRequest(format!("Invalid product id '{}' in cart", item.product_id))
         })?;
 
-        let product: Product = match state.client.decrement_stock(product_id, item.quantity).await {
+        let product: Product = match state
+            .client
+            .decrement_stock(product_id, item.quantity)
+            .await
+        {
             Ok(p) => p,
             Err(e) => {
                 compensation::restore_stock(&state, &reserved).await;
@@ -81,7 +85,11 @@ pub async fn create_order(
 
     // request an async payment via payment service; if it fails, cancel the order and restore the reserved stock
 
-    let checkout_url = match state.client.request_payment(order.id, user_id, total_cents).await {
+    let checkout_url = match state
+        .client
+        .request_payment(order.id, user_id, total_cents)
+        .await
+    {
         Ok(url) => url,
         Err(e) => {
             tracing::error!("Payment init failed for order {}: {:?}", order.id, e);

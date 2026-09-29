@@ -1,4 +1,7 @@
-use axum::{extract::{Query, State}, Json};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -16,7 +19,11 @@ pub async fn list_products(
 ) -> Result<Json<PaginatedProducts>, AppError> {
     let page = query.page.unwrap_or(DEFAULT_PAGE).max(1);
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT);
-    let limit = if limit < 1 { DEFAULT_LIMIT } else { limit.min(MAX_LIMIT) };
+    let limit = if limit < 1 {
+        DEFAULT_LIMIT
+    } else {
+        limit.min(MAX_LIMIT)
+    };
     let offset = (page - 1) * limit;
 
     let category_id = match query.category {

@@ -22,8 +22,8 @@ pub async fn auth_middleware(
         .strip_prefix("Bearer ")
         .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
 
-    let claims = decode_token(token, &jwt_secret)
-        .map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;
+    let claims =
+        decode_token(token, &jwt_secret).map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;
 
     request.extensions_mut().insert(claims);
     request.extensions_mut().insert(token.to_string());

@@ -1,4 +1,8 @@
-use axum::{extract::{Path, State}, http::StatusCode, Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -56,10 +60,7 @@ pub async fn payment_confirm(
             match compensation::cancel_order_and_restore_stock(&state, order_id).await? {
                 Some(o) => {
                     tracing::info!("Order {} cancelled and stock restored", order_id);
-                    Ok((
-                        StatusCode::OK,
-                        Json(json!({ "order_status": o.status })),
-                    ))
+                    Ok((StatusCode::OK, Json(json!({ "order_status": o.status }))))
                 }
                 None => {
                     tracing::info!(
@@ -67,10 +68,7 @@ pub async fn payment_confirm(
                         order_id
                     );
                     let current = status_of(&state, order_id).await;
-                    Ok((
-                        StatusCode::OK,
-                        Json(json!({ "order_status": current })),
-                    ))
+                    Ok((StatusCode::OK, Json(json!({ "order_status": current }))))
                 }
             }
         }

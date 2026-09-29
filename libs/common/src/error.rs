@@ -57,9 +57,7 @@ impl IntoResponse for AppError {
             AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
             AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
-            AppError::ServiceUnavailable(msg) => {
-                (StatusCode::SERVICE_UNAVAILABLE, msg.clone())
-            }
+            AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
             AppError::PaymentFailed => {
                 tracing::error!("Payment provider request failed");
                 (

@@ -94,6 +94,14 @@ ATOKEN=$(curl -s -X POST "$BASE/api/users/login" -H 'Content-Type: application/j
 ok "admin cancel" "$(curl -s -X PATCH "$BASE/api/orders/$O3/status" -H "Authorization: Bearer $ATOKEN" -H 'Content-Type: application/json' -d '{"status":"cancelled"}' | json "['status']")" "cancelled"
 ok "stock restored after admin cancel" "$(stock "$PROD")" "$((STOCK0 - 1))"
 
+echo "== admin refund blocked (paid -> cancelled) =="
+ok "cart add 4" "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/cart/items" -H "$AUTH" -H 'Content-Type: application/json' -d "{\"product_id\":\"$PROD\",\"quantity\":1}")" 200
+O4=$(curl -s -X POST "$BASE/api/orders" -H "$AUTH" -H 'Content-Type: application/json' -d '{}' | json "['order']['id']")
+ok "pay order 4 via webhook" "$(send_webhook "$O4" succeeded)" "200"
+ok "order 4 paid" "$(order_status "$O4")" "paid"
+ok "paid->cancelled rejected 400" "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$BASE/api/orders/$O4/status" -H "Authorization: Bearer $ATOKEN" -H 'Content-Type: application/json' -d '{"status":"cancelled"}')" 400
+ok "order 4 still paid" "$(order_status "$O4")" "paid"
+
 echo "== insufficient stock =="
 CUR=$(stock "$PROD")
 ok "zero out stock" "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$BASE/api/products/$PROD/stock" -H 'Content-Type: application/json' -d "{\"delta\":-$CUR}")" 200

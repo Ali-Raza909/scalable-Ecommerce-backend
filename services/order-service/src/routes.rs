@@ -1,4 +1,8 @@
-use axum::{middleware, routing::{get, patch, post}, Router};
+use axum::{
+    middleware,
+    routing::{get, patch, post},
+    Router,
+};
 
 use crate::handlers;
 use crate::state::AppState;
@@ -8,14 +12,20 @@ pub fn create_router(state: AppState) -> Router {
 
     let public_routes = Router::new()
         .route("/health", get(handlers::health))
-        .route("/orders/:id/payment-confirm", post(handlers::payment_confirm))
+        .route(
+            "/orders/:id/payment-confirm",
+            post(handlers::payment_confirm),
+        )
         .route(
             "/orders/payment-result/:id/:result",
             get(handlers::payment_result),
         );
 
     let protected_routes = Router::new()
-        .route("/orders", post(handlers::create_order).get(handlers::list_orders))
+        .route(
+            "/orders",
+            post(handlers::create_order).get(handlers::list_orders),
+        )
         .route("/orders/:id", get(handlers::get_order))
         .route("/orders/:id/status", patch(handlers::update_order_status))
         .layer(middleware::from_fn_with_state(

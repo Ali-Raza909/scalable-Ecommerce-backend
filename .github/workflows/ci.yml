@@ -1,0 +1,63 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt
+        run: cargo fmt --check
+      - name: clippy
+        run: cargo clippy --all-targets --workspace -- -D warnings
+      - name: test
+        run: cargo test --workspace
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: dummy secrets for local compose interpolation
+        run: |
+          cat > .env <<'EOF'
+          JWT_SECRET=cipipeline-nonsecret
+          SAFEPAY_API_KEY=cipipeline-dummy
+          SAFEPAY_MERCHANT_SECRET=cipipeline-dummy
+          SAFEPAY_WEBHOOK_SECRET=cipipeline-dummy
+          SENDGRID_API_KEY=cipipeline-dummy
+          EOF
+
+      - name: build images
+        run: docker compose build
+        timeout-minutes: 60
+
+      - name: boot stack
+        run: docker compose up -d --wait --timeout 180
+
+      - name: wait for services through gateway
+        run: |
+          up=0
+          for i in $(seq 1 60); do
+            p=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/api/products)
+            u=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost/api/users/login \
+                  -H 'Content-Type: application/json' -d '{"email":"x","password":"x"}')
+            if [ "$p" = "200" ] && [ "$u" != "000" ] && [ "$u" != "502" ]; then up=1; break; fi
+            sleep 2
+          done
+          [ "$up" = "1" ] || { echo "services did not become reachable"; docker compose logs; exit 1; }
+          echo "gateway ready (products=$p, users=$u)"
+
+      - name: seed catalog + users
+        run: ./e2e/seed.sh
+
+      - name: run E2E regression
+        run: ./e2e/regression.sh
+        timeout-minutes: 10

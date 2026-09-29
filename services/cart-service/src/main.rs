@@ -50,5 +50,4 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-
 // cart service tested manually , and all tests passes jiooooooooo
