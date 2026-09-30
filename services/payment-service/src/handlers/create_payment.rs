@@ -36,10 +36,23 @@ pub fn build_checkout_url(tracker: &str, tbt: &str, order_id: Uuid) -> String {
     )
 }
 
+fn mock_mode() -> bool {
+    std::env::var("SAFEPAY_MOCK").map(|v| v == "true").unwrap_or(false)
+}
+
 async fn create_payment_session(
     state: &AppState,
     input: &CreatePaymentRequest,
 ) -> Result<String, AppError> {
+    if mock_mode() {
+        // Hermetic mode for CI/demo: mint a local tracker instead of calling
+        // Safepay. The E2E regression later drives the real webhook path with a
+        // signed payload for this tracker, so nothing downstream changes.
+        let tracker = format!("track_mock_{}", Uuid::new_v4());
+        tracing::info!("SAFEPAY_MOCK: minting local tracker {}", tracker);
+        return Ok(tracker);
+    }
+
     let api_key = std::env::var("SAFEPAY_API_KEY").expect("SAFEPAY_API_KEY not set");
     let merchant_secret =
         std::env::var("SAFEPAY_MERCHANT_SECRET").expect("SAFEPAY_MERCHANT_SECRET not set");
@@ -79,6 +92,11 @@ async fn create_payment_session(
 }
 
 async fn create_passport_token(state: &AppState) -> Result<String, AppError> {
+    if mock_mode() {
+        tracing::info!("SAFEPAY_MOCK: minting local passport token");
+        return Ok("tbt_mock".into());
+    }
+
     let merchant_secret =
         std::env::var("SAFEPAY_MERCHANT_SECRET").expect("SAFEPAY_MERCHANT_SECRET not set");
 
