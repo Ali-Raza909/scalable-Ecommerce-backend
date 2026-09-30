@@ -177,6 +177,7 @@ services:
       SAFEPAY_MERCHANT_SECRET: ${SAFEPAY_MERCHANT_SECRET}
       SAFEPAY_WEBHOOK_SECRET: ${SAFEPAY_WEBHOOK_SECRET}
       SAFEPAY_ENV: sandbox
+      SAFEPAY_MOCK: ${SAFEPAY_MOCK:-false}
       ORDER_SERVICE_URL: http://order-service:8084
     depends_on:
       payment-db:

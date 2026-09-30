@@ -16,7 +16,7 @@ RUN cargo build --release --bin order-service
 
 # --- runtime stage ---
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates libssl3 curl && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/order-service /usr/local/bin/order-service
 EXPOSE 8084
 CMD ["order-service"]

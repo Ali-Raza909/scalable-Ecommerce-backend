@@ -32,6 +32,7 @@ jobs:
           SAFEPAY_API_KEY=cipipeline-dummy
           SAFEPAY_MERCHANT_SECRET=cipipeline-dummy
           SAFEPAY_WEBHOOK_SECRET=cipipeline-dummy
+          SAFEPAY_MOCK=true
           SENDGRID_API_KEY=cipipeline-dummy
           EOF
 
