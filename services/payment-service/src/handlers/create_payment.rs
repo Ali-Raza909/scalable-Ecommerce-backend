@@ -37,7 +37,9 @@ pub fn build_checkout_url(tracker: &str, tbt: &str, order_id: Uuid) -> String {
 }
 
 fn mock_mode() -> bool {
-    std::env::var("SAFEPAY_MOCK").map(|v| v == "true").unwrap_or(false)
+    std::env::var("SAFEPAY_MOCK")
+        .map(|v| v == "true")
+        .unwrap_or(false)
 }
 
 async fn create_payment_session(
