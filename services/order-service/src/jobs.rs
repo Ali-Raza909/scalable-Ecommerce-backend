@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use tokio::time;
 
 use crate::db;
@@ -50,7 +50,7 @@ pub fn spawn_pending_order_timeout(state: AppState, grace: Duration, interval: D
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{NaiveDateTime, TimeZone};
 
     fn at(y: i32, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> DateTime<Utc> {
         Utc.from_utc_datetime(&NaiveDateTime::new(
