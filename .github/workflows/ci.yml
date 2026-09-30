@@ -36,8 +36,32 @@ jobs:
           SENDGRID_API_KEY=cipipeline-dummy
           EOF
 
-      - name: build images
-        run: docker compose build
+      - name: set up buildx (with GitHub Actions layer cache)
+        uses: docker/setup-buildx-action@v3
+
+      - name: build service images (dependency layers cached across runs)
+        run: |
+          set -e
+          services=(user-service product-service cart-service order-service payment-service notification-service)
+          pids=()
+          for svc in "${services[@]}"; do
+            docker buildx build \
+              --cache-from "type=gha,scope=ci-cache-$svc" \
+              --cache-to "type=gha,mode=max,scope=ci-cache-$svc" \
+              --file "services/$svc/Dockerfile" \
+              --tag "scalable-ecommerce-backend-$svc:latest" \
+              . &
+            pids+=("$!")
+          done
+          failed=0
+          for pid in "${pids[@]}"; do
+            wait "$pid" || failed=$((failed + 1))
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "build failed for $failed image(s)"
+            exit 1
+          fi
+          docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^scalable-ecommerce-backend-' | sort
         timeout-minutes: 60
 
       - name: boot stack
