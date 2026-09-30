@@ -62,3 +62,54 @@ pub async fn update_order_status(
 
     Ok(Json(updated))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::valid_next_status;
+
+    #[test]
+    fn pending_may_become_paid_or_cancelled() {
+        assert!(valid_next_status("pending", "paid"));
+        assert!(valid_next_status("pending", "cancelled"));
+    }
+
+    #[test]
+    fn paid_may_only_be_shipped_never_cancelled() {
+        // paid -> cancelled is deliberately blocked (refund semantics), and
+        // delivery/skipping states are not allowed from paid.
+        assert!(valid_next_status("paid", "shipped"));
+        assert!(!valid_next_status("paid", "cancelled"));
+        assert!(!valid_next_status("paid", "delivered"));
+        assert!(!valid_next_status("paid", "paid"));
+    }
+
+    #[test]
+    fn shipped_may_only_be_delivered() {
+        assert!(valid_next_status("shipped", "delivered"));
+        assert!(!valid_next_status("shipped", "cancelled"));
+        assert!(!valid_next_status("shipped", "paid"));
+        assert!(!valid_next_status("shipped", "shipped"));
+    }
+
+    #[test]
+    fn delivered_has_no_further_transitions() {
+        assert!(!valid_next_status("delivered", "shipped"));
+        assert!(!valid_next_status("delivered", "cancelled"));
+        assert!(!valid_next_status("delivered", "paid"));
+        assert!(!valid_next_status("delivered", "delivered"));
+    }
+
+    #[test]
+    fn unknown_current_state_rejects_everything() {
+        assert!(!valid_next_status("refunded", "cancelled"));
+        assert!(!valid_next_status("", "paid"));
+    }
+
+    #[test]
+    fn rejected_transitions_are_symmetric_reversals() {
+        // No backward moves through the state machine.
+        assert!(!valid_next_status("paid", "pending"));
+        assert!(!valid_next_status("cancelled", "pending"));
+        assert!(!valid_next_status("delivered", "shipped"));
+    }
+}
