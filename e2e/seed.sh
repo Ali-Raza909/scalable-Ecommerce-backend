@@ -35,6 +35,11 @@ ensure_user() {
 ensure_user "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "Docker Admin"
 ensure_user "$REGULAR_EMAIL" "$PASSWORD" "Regular User"
 
+say "ensuring '$ADMIN_EMAIL' has role=admin (register always assigns 'user')"
+docker compose exec -T user-db psql -U user_svc -d users -c \
+  "UPDATE users SET role = 'admin' WHERE email = '$ADMIN_EMAIL'" >/dev/null \
+  || { echo "FATAL: could not reach user-db" >&2; exit 1; }
+
 ensure_product() {
   local name="$1" desc="$2" price="$3"
   local existing
