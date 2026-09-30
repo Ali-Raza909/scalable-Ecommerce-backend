@@ -27,34 +27,60 @@ fn hex_hmac_sha512(key: &[u8], data: &[u8]) -> String {
 }
 
 fn verify_signature(signature: &str, headers: &HeaderMap, body: &[u8], secret: &[u8]) -> bool {
-    let variants: Vec<String> = vec![hex_hmac_sha512(secret, body), hex_hmac_sha256(secret, body)];
-
-    let scheme_c = headers
+    let timestamp = headers
         .get("X-SFPY-TIMESTAMP")
-        .and_then(|v| v.to_str().ok())
-        .map(|ts| {
-            let mut signed = Vec::with_capacity(ts.len() + 1 + body.len());
-            signed.extend_from_slice(ts.as_bytes());
-            signed.push(b'.');
-            signed.extend_from_slice(body);
-            signed
-        })
-        .and_then(|mut signed_bytes| {
-            let key = STANDARD.decode(secret).unwrap_or_default();
-            if key.is_empty() {
-                return None;
-            }
-            signed_bytes = std::mem::take(&mut signed_bytes);
-            Some(hex_hmac_sha256(&key, &signed_bytes))
-        });
+        .and_then(|v| v.to_str().ok());
+    verify_hmac(signature, body, secret)
+        || verify_timestamp_scheme(signature, timestamp, body, secret)
+}
 
-    if let Some(c) = scheme_c {
-        if c == signature {
-            return true;
-        }
+/// Plain HMAC scheme: signature is HMAC-SHA512 (or SHA-256) of the raw body,
+/// hex-encoded, keyed with the raw webhook secret.
+fn verify_hmac(signature: &str, body: &[u8], secret: &[u8]) -> bool {
+    let computed = [hex_hmac_sha512(secret, body), hex_hmac_sha256(secret, body)];
+    computed.iter().any(|c| c == signature)
+}
+
+/// Timestamp scheme: signature is HMAC-SHA256 over `"<timestamp>.<body>"`,
+/// keyed with the base64-decoded secret.
+fn verify_timestamp_scheme(
+    signature: &str,
+    timestamp: Option<&str>,
+    body: &[u8],
+    secret: &[u8],
+) -> bool {
+    let Some(ts) = timestamp else { return false };
+    let key = STANDARD.decode(secret).unwrap_or_default();
+    if key.is_empty() {
+        return false;
     }
+    let mut signed = Vec::with_capacity(ts.len() + 1 + body.len());
+    signed.extend_from_slice(ts.as_bytes());
+    signed.push(b'.');
+    signed.extend_from_slice(body);
+    hex_hmac_sha256(&key, &signed) == signature
+}
 
-    variants.iter().any(|v| v == signature)
+#[derive(Debug, PartialEq, Eq)]
+enum WebhookKind {
+    Succeeded,
+    Failed,
+}
+
+/// Classifies a webhook by its event type (preferred) then by state field.
+/// Type wins, matching how the handler dispatches: a `payment.failed` event
+/// can carry `state: TRACKER_ENROLLED` (observed in production), so the event
+/// type must be authoritative.
+fn classify_event(event_type: &str, state: &str) -> Option<WebhookKind> {
+    if event_type == "payment.succeeded" || matches!(state, "TRACKER_ENDED" | "PAID") {
+        Some(WebhookKind::Succeeded)
+    } else if event_type == "payment.failed"
+        || matches!(state, "FAILED" | "CANCELLED" | "TRACKER_FAILED")
+    {
+        Some(WebhookKind::Failed)
+    } else {
+        None
+    }
 }
 
 pub async fn safepay_webhook(
@@ -92,26 +118,21 @@ pub async fn safepay_webhook(
     let state_field = event["data"]["state"].as_str().unwrap_or("");
     let event_type = event["type"].as_str().unwrap_or("");
 
-    let succeeded =
-        event_type == "payment.succeeded" || matches!(state_field, "TRACKER_ENDED" | "PAID");
-    let failed = event_type == "payment.failed"
-        || matches!(state_field, "FAILED" | "CANCELLED" | "TRACKER_FAILED");
-
-    match (succeeded, failed) {
-        (true, _) => {
+    match classify_event(event_type, state_field) {
+        Some(WebhookKind::Succeeded) => {
             let updated =
                 db::update_payment_status_by_ref(&state.pool, tracker, "succeeded").await?;
             if updated.is_some() {
                 confirm_order(&state, tracker, "paid").await;
             }
         }
-        (_, true) => {
+        Some(WebhookKind::Failed) => {
             let updated = db::update_payment_status_by_ref(&state.pool, tracker, "failed").await?;
             if updated.is_some() {
                 confirm_order(&state, tracker, "cancelled").await;
             }
         }
-        _ => {
+        None => {
             tracing::info!(
                 "Unhandled Safepay webhook event (type={}, state={})",
                 event_type,
@@ -188,5 +209,145 @@ async fn confirm_order(state: &AppState, tracker: &str, status: &str) {
             resp.status()
         ),
         Err(e) => tracing::warn!("Order confirm failed for order {}: {}", order_id, e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::engine::general_purpose::STANDARD;
+
+    const SECRET: &[u8] = b"test-webhook-secret";
+
+    fn sha512(body: impl AsRef<[u8]>) -> String {
+        hex_hmac_sha512(SECRET, body.as_ref())
+    }
+
+    fn sha256(body: impl AsRef<[u8]>) -> String {
+        hex_hmac_sha256(SECRET, body.as_ref())
+    }
+
+    #[test]
+    fn accepts_sha512_signature() {
+        let body = br#"{"type":"payment.succeeded"}"#;
+        assert!(verify_hmac(&sha512(body), body, SECRET));
+    }
+
+    #[test]
+    fn accepts_sha256_signature() {
+        let body = br#"{"type":"payment.succeeded"}"#;
+        assert!(verify_hmac(&sha256(body), body, SECRET));
+    }
+
+    #[test]
+    fn rejects_tampered_body() {
+        let body = br#"{"type":"payment.succeeded"}"#;
+        let sig = sha512(body);
+        assert!(!verify_hmac(&sig, br#"{"type":"payment.failed"}"#, SECRET));
+    }
+
+    #[test]
+    fn rejects_signature_from_wrong_secret() {
+        let body = br#"{"type":"payment.succeeded"}"#;
+        let sig = hex_hmac_sha512(b"other-secret", body);
+        assert!(!verify_hmac(&sig, body, SECRET));
+    }
+
+    #[test]
+    fn rejects_garbage_and_empty_signatures() {
+        let body = br#"{"type":"payment.succeeded"}"#;
+        assert!(!verify_hmac("not-a-signature", body, SECRET));
+        assert!(!verify_hmac("", body, SECRET));
+    }
+
+    #[test]
+    fn verify_signature_short_circuits_to_timestamp_scheme() {
+        // No timestamp header, plain HMAC must still verify through the wrapper.
+        let body = br#"{"type":"payment.failed"}"#;
+        let headers = HeaderMap::new();
+        assert!(verify_signature(&sha512(body), &headers, body, SECRET));
+    }
+
+    #[test]
+    fn timestamp_scheme_accepts_valid_and_rejects_tampered() {
+        let body = br#"{"type":"payment.succeeded"}"#;
+        let base64_secret = STANDARD.encode(SECRET);
+        let decoded_key = STANDARD.decode(&base64_secret).unwrap();
+
+        let mut signed = Vec::from("1700000000".as_bytes());
+        signed.push(b'.');
+        signed.extend_from_slice(body);
+        let good = hex_hmac_sha256(&decoded_key, &signed);
+
+        assert!(verify_timestamp_scheme(
+            &good,
+            Some("1700000000"),
+            body,
+            base64_secret.as_bytes()
+        ));
+        assert!(!verify_timestamp_scheme(
+            &good,
+            Some("1699999999"),
+            body,
+            base64_secret.as_bytes()
+        ));
+        assert!(!verify_timestamp_scheme(
+            &good,
+            Some("1700000000"),
+            br#"{"type":"payment.failed"}"#,
+            base64_secret.as_bytes()
+        ));
+    }
+
+    #[test]
+    fn timestamp_scheme_requires_present_timestamp() {
+        let body = br#"{}"#;
+        assert!(!verify_timestamp_scheme(&sha256(body), None, body, SECRET));
+        // Non-base64 secret cannot derive the timestamp-scheme key.
+        assert!(!verify_timestamp_scheme(
+            &sha256(body),
+            Some("0"),
+            body,
+            b"not base64!!"
+        ));
+    }
+
+    #[test]
+    fn classify_event_type_precedes_state() {
+        // A real observed case: payment.failed with state TRACKER_ENROLLED (403).
+        assert_eq!(
+            classify_event("payment.failed", "TRACKER_ENROLLED"),
+            Some(WebhookKind::Failed)
+        );
+        assert_eq!(
+            classify_event("payment.succeeded", "anything"),
+            Some(WebhookKind::Succeeded)
+        );
+    }
+
+    #[test]
+    fn classify_event_by_state_when_type_unknown() {
+        assert_eq!(
+            classify_event("tracker.updated", "TRACKER_ENDED"),
+            Some(WebhookKind::Succeeded)
+        );
+        assert_eq!(
+            classify_event("tracker.updated", "TRACKER_FAILED"),
+            Some(WebhookKind::Failed)
+        );
+        assert_eq!(
+            classify_event("tracker.updated", "FAILED"),
+            Some(WebhookKind::Failed)
+        );
+        assert_eq!(
+            classify_event("tracker.updated", "PAID"),
+            Some(WebhookKind::Succeeded)
+        );
+    }
+
+    #[test]
+    fn classify_event_unknown_state_and_type() {
+        assert_eq!(classify_event("tracker.updated", "TRACKER_ENROLLED"), None);
+        assert_eq!(classify_event("", ""), None);
     }
 }
