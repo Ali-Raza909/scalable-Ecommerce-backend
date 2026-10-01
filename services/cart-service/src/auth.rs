@@ -4,7 +4,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use common::decode_token;
+use common::{bearer_token, decode_token};
 
 pub async fn auth_middleware(
     State(jwt_secret): State<String>,
@@ -17,9 +17,7 @@ pub async fn auth_middleware(
         .and_then(|value| value.to_str().ok())
         .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
+    let token = bearer_token(auth_header).ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
 
     let claims =
         decode_token(token, &jwt_secret).map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;

@@ -25,13 +25,19 @@ fn valid_next_status(current: &str, requested: &str) -> bool {
     allowed.contains(&requested)
 }
 
+/// The only endpoint carrying admin powers is the status PATCH; anything else
+/// the system allows a normal user to do is not in scope for role gating.
+fn is_admin(claims: &Claims) -> bool {
+    claims.role == "admin"
+}
+
 pub async fn update_order_status(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Path(order_id): Path<Uuid>,
     Json(payload): Json<UpdateStatusRequest>,
 ) -> Result<Json<Order>, AppError> {
-    if claims.role != "admin" {
+    if !is_admin(&claims) {
         return Err(AppError::Forbidden);
     }
 
@@ -65,7 +71,26 @@ pub async fn update_order_status(
 
 #[cfg(test)]
 mod tests {
-    use super::valid_next_status;
+    use super::{is_admin, valid_next_status};
+    use common::Claims;
+
+    fn claims(role: &str) -> Claims {
+        Claims {
+            sub: "00000000-0000-4000-8000-000000000001".into(),
+            email: "user@example.com".into(),
+            role: role.into(),
+            exp: 9_999_999_999,
+            iat: 1_700_000_000,
+        }
+    }
+
+    #[test]
+    fn only_admin_role_passes_the_gate() {
+        assert!(is_admin(&claims("admin")));
+        assert!(!is_admin(&claims("user")));
+        assert!(!is_admin(&claims("")));
+        assert!(!is_admin(&claims("ADMIN")));
+    }
 
     #[test]
     fn pending_may_become_paid_or_cancelled() {
