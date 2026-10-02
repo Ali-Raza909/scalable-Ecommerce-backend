@@ -2,8 +2,8 @@
 
 A 6-service Rust microservices order pipeline behind a Traefik gateway: JWT-auth user
 service, catalog + stock, Redis-backed cart, order saga, Safepay payments (sandbox),
-and a notification service. Stock is reserved at checkout and released via an
-idempotent compensation path when an order is cancelled or expires.
+and a Resend-backed notification service. Stock is reserved at checkout and released
+via an idempotent compensation path when an order is cancelled or expires.
 
 ## Services
 
@@ -14,7 +14,7 @@ idempotent compensation path when an order is cancelled or expires.
 | cart-service        | 8083 | Redis    | per-user cart (JWT-protected)                              |
 | order-service       | 8084 | Postgres | checkout saga, payment-confirm, admin status, timeout job  |
 | payment-service     | 8085 | Postgres | Safepay session/passport, signed webhook handling          |
-| notification-service| 8086 | none     | ordered-event hooks (currently a stub)                     |
+| notification-service| 8086 | none     | Resend email confirmations (log-only when `EMAIL_MOCK=true`) |
 
 Each database-backed service runs `sqlx::migrate!` on boot, so a fresh Postgres gets
 its schema automatically.
@@ -82,6 +82,41 @@ dev, expose `8085:8085` and `ngrok http <url> 8085` only for webhook testing,
 then remove the port mapping. Payment-service and the webhook are intentionally
 not gateway-exposed.
 
+## Email via Resend
+
+Order confirmations are sent by notification-service through [Resend](https://resend.com).
+Configuration is read from `.env`:
+
+- `RESEND_API_KEY` — account API key (`re_…`) with *Sending access*.
+- `RESEND_FROM` — sender address (default `onboarding@resend.dev`).
+- `EMAIL_MOCK` — when `true`, or when `RESEND_API_KEY` is unset, the service logs
+  the email instead of sending. CI and `.env.example` default it to `true`.
+
+On the free plan the default `onboarding@resend.dev` sender is test-only: Resend
+delivers only to the address that owns the account and rejects reserved domains
+like `example.com` with `422`. It also tends to land in spam, because the shared
+sender domain carries no reputation. For real inbox delivery, verify your own
+domain in Resend (SPF + DKIM, plus a DMARC record) and set
+`RESEND_FROM=orders@yourdomain.com`. Sending is best-effort — a failed delivery
+only logs a warning and never fails checkout.
+
+## Observability
+
+Every request carries a correlation id. The `request_id_middleware` in
+`libs/common` reads an inbound `X-Request-Id`, reuses it when it is a valid UUID
+and otherwise generates one, and echoes it on the response. order-service and
+payment-service propagate it on their outbound calls and log it as `trace_id`,
+so one checkout can be followed across services with a single id
+(`docker compose logs | grep <id>`). `e2e/regression.sh` asserts that the same id
+is echoed back and appears in both services' logs.
+
+## Tests
+
+`cargo test --workspace` runs 38 unit tests over the pure logic: Safepay webhook
+signature verification and event classification, the admin status whitelist, the
+pending-order timeout boundary, JWT `bearer_token` parsing, cart-item-to-stock
+mapping, request-id resolution, and the email mock guard.
+
 ## Local development
 
 ```bash
@@ -99,16 +134,19 @@ saga, cancel, timeout, or stock-compensation paths.
 
 ## CI
 
-`.github/workflows/ci.yml` runs, on every push/PR:
+`.github/workflows/ci.yml` runs on every push/PR (doc-only `**.md` changes are
+skipped):
 
-1. `cargo fmt --check`
-2. `cargo clippy --all-targets --workspace -- -D warnings`
-3. `cargo test --workspace`
-4. `docker compose build`
-5. boot the stack with dummy `.env` values, seed, and run `e2e/regression.sh`
+1. Fast gates in one job sharing the `rust-cache` target dir: `cargo fmt --check`,
+   `cargo clippy --all-targets --workspace -- -D warnings`, `cargo test --workspace`.
+2. E2E (needs the gates): build the six service images in parallel with
+   `docker buildx build --load` and a per-service `type=gha` layer cache, boot the
+   stack with dummy `.env` values (`SAFEPAY_MOCK=true`, `EMAIL_MOCK=true`), seed,
+   and run `e2e/regression.sh`.
 
-Because the regression self-signs webhooks, the E2E stage runs hermetically with
-no real Safepay credentials.
+Because the regression self-signs webhooks and email is mocked, the E2E stage is
+fully hermetic — no real Safepay or Resend credentials required. `--load` is what
+lets compose reuse the cached images instead of rebuilding them.
 
 ## Known limitations
 
@@ -120,9 +158,11 @@ no real Safepay credentials.
   has been charged for an order that will not be fulfilled. payment-service logs
   the event at `ERROR` and flags the payment row `paid_after_cancel` so it is
   visible and queryable; a manual refund is still required.
-- **notification-service is a stub.** It logs `would email …` instead of
-  sending. The integration point is proven; wiring a real provider (e.g.
-  SendGrid/Mailtrap) is a self-contained change.
+- **Email delivery depends on the sender domain.** Confirmations go through
+  Resend, but on the free plan with the default `onboarding@resend.dev` sender
+  mail is test-only (account owner only, `example.com` rejected) and likely to
+  land in spam; inbox delivery needs a verified domain. Sends are best-effort and
+  never block checkout.
 - **Sandbox only.** Payments run against Safepay's sandbox (no live KYC or real
   money movement).
 - **No frontend.** After hosted checkout, the customer lands on a static
