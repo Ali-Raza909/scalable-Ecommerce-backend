@@ -50,6 +50,7 @@ pub async fn send_email(input: &CreateNotificationRequest) -> Result<(), anyhow:
     let status = resp.status();
     if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();
+        tracing::error!(status = %status, body = %body, "Resend send failed");
         anyhow::bail!("Resend API error {status}: {body}");
     }
 
