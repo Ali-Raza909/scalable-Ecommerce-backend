@@ -48,6 +48,7 @@ jobs:
             docker buildx build \
               --cache-from "type=gha,scope=ci-cache-$svc" \
               --cache-to "type=gha,mode=max,scope=ci-cache-$svc" \
+              --load \
               --file "services/$svc/Dockerfile" \
               --tag "scalable-ecommerce-backend-$svc:latest" \
               . &
@@ -65,7 +66,7 @@ jobs:
         timeout-minutes: 60
 
       - name: boot stack
-        run: docker compose up -d --wait --timeout 180
+        run: docker compose up -d --wait --no-build --timeout 180
 
       - name: wait for services through gateway
         run: |

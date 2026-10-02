@@ -91,14 +91,6 @@ pub async fn safepay_webhook(
     body: Bytes,
 ) -> Result<StatusCode, AppError> {
     let trace_id = trace.map(|Extension(RequestId(id))| id.to_string());
-    tracing::info!(?trace_id, "Safepay webhook received");
-
-    // TEMPORARY defensive log: confirm real payload shape before trusting
-    // the event extraction below (Safepay docs are thin here).
-    tracing::info!(
-        "Raw Safepay webhook payload: {}",
-        String::from_utf8_lossy(&body)
-    );
 
     let signature = headers
         .get("X-SFPY-SIGNATURE")
@@ -122,6 +114,8 @@ pub async fn safepay_webhook(
 
     let state_field = event["data"]["state"].as_str().unwrap_or("");
     let event_type = event["type"].as_str().unwrap_or("");
+
+    tracing::debug!(?trace_id, tracker = %tracker, state = %state_field, "Safepay webhook received");
 
     match classify_event(event_type, state_field) {
         Some(WebhookKind::Succeeded) => {
