@@ -2,7 +2,7 @@ use axum::{
     extract::{Extension, Path, State},
     Json,
 };
-use common::Claims;
+use common::{Claims, RequestId};
 use uuid::Uuid;
 
 use crate::db;
@@ -35,8 +35,11 @@ pub async fn update_order_status(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Path(order_id): Path<Uuid>,
+    trace: Option<Extension<RequestId>>,
     Json(payload): Json<UpdateStatusRequest>,
 ) -> Result<Json<Order>, AppError> {
+    let trace_id = trace.map(|Extension(RequestId(id))| id.to_string());
+
     if !is_admin(&claims) {
         return Err(AppError::Forbidden);
     }
@@ -55,7 +58,13 @@ pub async fn update_order_status(
     // Cancelling an unpaid order must release its reserved stock. Guarded so a
     // double PATCH restores inventory exactly once.
     if order.status == "pending" && payload.status == "cancelled" {
-        let updated = match compensation::cancel_order_and_restore_stock(&state, order_id).await? {
+        let updated = match compensation::cancel_order_and_restore_stock(
+            &state,
+            order_id,
+            trace_id.as_deref(),
+        )
+        .await?
+        {
             Some(o) => o,
             None => order,
         };

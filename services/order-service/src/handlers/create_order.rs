@@ -26,10 +26,13 @@ pub async fn create_order(
         .map_err(|_| AppError::BadRequest("Invalid user id in token".to_string()))?;
 
     //  validate the user exists through user service
-    state.client.validate_user(user_id, &token).await?;
+    state
+        .client
+        .validate_user(user_id, &token, trace_id.as_deref())
+        .await?;
 
     // fetch the cart using cart service
-    let cart = state.client.get_cart(&token).await?;
+    let cart = state.client.get_cart(&token, trace_id.as_deref()).await?;
     if cart.items.is_empty() {
         return Err(AppError::BadRequest("Cart is empty".to_string()));
     }
@@ -47,12 +50,12 @@ pub async fn create_order(
 
         let product: Product = match state
             .client
-            .decrement_stock(product_id, item.quantity)
+            .decrement_stock(product_id, item.quantity, trace_id.as_deref())
             .await
         {
             Ok(p) => p,
             Err(e) => {
-                compensation::restore_stock(&state, &reserved).await;
+                compensation::restore_stock(&state, &reserved, trace_id.as_deref()).await;
                 return Err(e);
             }
         };
@@ -82,7 +85,7 @@ pub async fn create_order(
     {
         Ok(result) => result,
         Err(e) => {
-            compensation::restore_stock(&state, &reserved).await;
+            compensation::restore_stock(&state, &reserved, trace_id.as_deref()).await;
             return Err(e.into());
         }
     };
@@ -91,13 +94,16 @@ pub async fn create_order(
 
     let checkout_url = match state
         .client
-        .request_payment(order.id, user_id, total_cents)
+        .request_payment(order.id, user_id, total_cents, trace_id.as_deref())
         .await
     {
         Ok(url) => url,
         Err(e) => {
             tracing::error!("Payment init failed for order {}: {:?}", order.id, e);
-            if let Err(ce) = compensation::cancel_order_and_restore_stock(&state, order.id).await {
+            if let Err(ce) =
+                compensation::cancel_order_and_restore_stock(&state, order.id, trace_id.as_deref())
+                    .await
+            {
                 tracing::error!(
                     "Failed to cancel order {} and restore stock: {:?}",
                     order.id,
@@ -112,7 +118,7 @@ pub async fn create_order(
     // cart is cleared now (only the caller's token can do this); notification
     // moves to payment-confirm so it only fires after payment actually succeeds.
 
-    if let Err(e) = state.client.clear_cart(&token).await {
+    if let Err(e) = state.client.clear_cart(&token, trace_id.as_deref()).await {
         tracing::warn!("Failed to clear cart for user {}: {:?}", user_id, e);
     }
 

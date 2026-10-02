@@ -27,7 +27,8 @@ pub fn spawn_pending_order_timeout(state: AppState, grace: Duration, interval: D
                     for id in ids {
                         // guarded + idempotent: a cancelled order (webhook, admin,
                         // earlier sweep) is a no-op here and restores stock once.
-                        match compensation::cancel_order_and_restore_stock(&state, id).await {
+                        // Background task: no request context to propagate.
+                        match compensation::cancel_order_and_restore_stock(&state, id, None).await {
                             Ok(Some(_)) => tracing::info!(
                                 "Timeout: order {} past grace period; cancelled and stock restored",
                                 id

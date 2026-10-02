@@ -24,11 +24,11 @@ pub fn order_items_to_units(items: &[OrderItem]) -> Vec<StockUnit> {
         .collect()
 }
 
-pub async fn restore_stock(state: &AppState, units: &[StockUnit]) {
+pub async fn restore_stock(state: &AppState, units: &[StockUnit], trace: Option<&str>) {
     for unit in units {
         if let Err(e) = state
             .client
-            .restore_stock(unit.product_id, unit.quantity)
+            .restore_stock(unit.product_id, unit.quantity, trace)
             .await
         {
             tracing::error!(
@@ -43,6 +43,7 @@ pub async fn restore_stock(state: &AppState, units: &[StockUnit]) {
 pub async fn cancel_order_and_restore_stock(
     state: &AppState,
     order_id: Uuid,
+    trace: Option<&str>,
 ) -> Result<Option<Order>, AppError> {
     // guarded: only the pending -> cancelled transition returns a row, so a
     // retried/double-cancelled order restores its stock exactly once.
@@ -51,7 +52,7 @@ pub async fn cancel_order_and_restore_stock(
     if order.is_some() {
         let items = db::get_order_items(&state.pool, order_id).await?;
         let units = order_items_to_units(&items);
-        restore_stock(state, &units).await;
+        restore_stock(state, &units, trace).await;
     }
 
     Ok(order)

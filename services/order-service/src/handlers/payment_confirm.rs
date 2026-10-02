@@ -47,7 +47,7 @@ pub async fn payment_confirm(
                 // payment confirmed; now send the order confirmation (best-effort).
                 if let Err(e) = state
                     .client
-                    .send_notification(order.id, order.user_id, &order.email)
+                    .send_notification(order.id, order.user_id, &order.email, trace_id.as_deref())
                     .await
                 {
                     tracing::warn!(
@@ -67,7 +67,13 @@ pub async fn payment_confirm(
         "cancelled" => {
             // guarded + idempotent: first pending -> cancelled transition also
             // restores stock; retried/double-cancelled webhooks are no-ops.
-            match compensation::cancel_order_and_restore_stock(&state, order_id).await? {
+            match compensation::cancel_order_and_restore_stock(
+                &state,
+                order_id,
+                trace_id.as_deref(),
+            )
+            .await?
+            {
                 Some(o) => {
                     tracing::info!("Order {} cancelled and stock restored", order_id);
                     Ok((StatusCode::OK, Json(json!({ "order_status": o.status }))))

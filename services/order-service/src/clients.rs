@@ -4,6 +4,8 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 
+const TRACE_HEADER: &str = common::REQUEST_ID_HEADER;
+
 #[derive(Debug, Clone)]
 pub struct ServiceClient {
     http: reqwest::Client,
@@ -35,11 +37,17 @@ impl ServiceClient {
         }
     }
 
-    pub async fn validate_user(&self, user_id: Uuid, token: &str) -> Result<(), AppError> {
+    pub async fn validate_user(
+        &self,
+        user_id: Uuid,
+        token: &str,
+        trace: Option<&str>,
+    ) -> Result<(), AppError> {
         let resp = self
             .http
             .get(format!("{}/users/{}", self.user_service_url, user_id))
             .header("Authorization", format!("Bearer {}", token))
+            .header(TRACE_HEADER, trace.unwrap_or(""))
             .send()
             .await
             .map_err(|e| AppError::ServiceUnavailable(format!("User service unreachable: {e}")))?;
@@ -51,11 +59,16 @@ impl ServiceClient {
         }
     }
 
-    pub async fn get_cart(&self, token: &str) -> Result<CartResponse, AppError> {
+    pub async fn get_cart(
+        &self,
+        token: &str,
+        trace: Option<&str>,
+    ) -> Result<CartResponse, AppError> {
         let resp = self
             .http
             .get(format!("{}/cart", self.cart_service_url))
             .header("Authorization", format!("Bearer {}", token))
+            .header(TRACE_HEADER, trace.unwrap_or(""))
             .send()
             .await
             .map_err(|e| AppError::ServiceUnavailable(format!("Cart service unreachable: {e}")))?;
@@ -76,6 +89,7 @@ impl ServiceClient {
         &self,
         product_id: Uuid,
         quantity: i32,
+        trace: Option<&str>,
     ) -> Result<Product, AppError> {
         let resp = self
             .http
@@ -83,6 +97,7 @@ impl ServiceClient {
                 "{}/products/{}/stock",
                 self.product_service_url, product_id
             ))
+            .header(TRACE_HEADER, trace.unwrap_or(""))
             .json(&serde_json::json!({ "delta": -quantity }))
             .send()
             .await
@@ -105,13 +120,19 @@ impl ServiceClient {
         }
     }
 
-    pub async fn restore_stock(&self, product_id: Uuid, quantity: i32) -> Result<(), AppError> {
+    pub async fn restore_stock(
+        &self,
+        product_id: Uuid,
+        quantity: i32,
+        trace: Option<&str>,
+    ) -> Result<(), AppError> {
         let resp = self
             .http
             .patch(format!(
                 "{}/products/{}/stock",
                 self.product_service_url, product_id
             ))
+            .header(TRACE_HEADER, trace.unwrap_or(""))
             .json(&serde_json::json!({ "delta": quantity }))
             .send()
             .await
@@ -129,11 +150,12 @@ impl ServiceClient {
         }
     }
 
-    pub async fn clear_cart(&self, token: &str) -> Result<(), AppError> {
+    pub async fn clear_cart(&self, token: &str, trace: Option<&str>) -> Result<(), AppError> {
         let resp = self
             .http
             .delete(format!("{}/cart", self.cart_service_url))
             .header("Authorization", format!("Bearer {}", token))
+            .header(TRACE_HEADER, trace.unwrap_or(""))
             .send()
             .await
             .map_err(|e| AppError::ServiceUnavailable(format!("Cart service unreachable: {e}")))?;
@@ -153,10 +175,12 @@ impl ServiceClient {
         order_id: Uuid,
         user_id: Uuid,
         amount_cents: i32,
+        trace: Option<&str>,
     ) -> Result<String, AppError> {
         let resp = self
             .http
             .post(format!("{}/payments", self.payment_service_url))
+            .header(TRACE_HEADER, trace.unwrap_or(""))
             .json(&serde_json::json!({
                 "order_id": order_id,
                 "user_id": user_id,
@@ -188,10 +212,12 @@ impl ServiceClient {
         order_id: Uuid,
         user_id: Uuid,
         email: &str,
+        trace: Option<&str>,
     ) -> Result<(), AppError> {
         let resp = self
             .http
             .post(format!("{}/notifications", self.notification_service_url))
+            .header(TRACE_HEADER, trace.unwrap_or(""))
             .json(&serde_json::json!({
                 "order_id": order_id,
                 "user_id": user_id,
