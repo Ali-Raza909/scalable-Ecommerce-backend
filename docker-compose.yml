@@ -188,7 +188,9 @@ services:
       context: .
       dockerfile: services/notification-service/Dockerfile
     environment:
-      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-onboarding@resend.dev}
+      EMAIL_MOCK: ${EMAIL_MOCK:-true}
 
 volumes:
   user_db_data:
