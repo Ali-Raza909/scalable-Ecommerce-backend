@@ -37,7 +37,8 @@ jobs:
           SAFEPAY_MERCHANT_SECRET=cipipeline-dummy
           SAFEPAY_WEBHOOK_SECRET=cipipeline-dummy
           SAFEPAY_MOCK=true
-          SENDGRID_API_KEY=cipipeline-dummy
+          RESEND_API_KEY=cipipeline-dummy
+          EMAIL_MOCK=true
           EOF
 
       - name: set up buildx (with GitHub Actions layer cache)
