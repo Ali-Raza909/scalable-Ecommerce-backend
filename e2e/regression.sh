@@ -102,6 +102,23 @@ ok "order 4 paid" "$(order_status "$O4")" "paid"
 ok "paid->cancelled rejected 400" "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$BASE/api/orders/$O4/status" -H "Authorization: Bearer $ATOKEN" -H 'Content-Type: application/json' -d '{"status":"cancelled"}')" 400
 ok "order 4 still paid" "$(order_status "$O4")" "paid"
 
+echo "== trace correlation (inbound id honored + echoed across services) =="
+TID="3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+ok "cart add for trace" "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/cart/items" -H "$AUTH" -H 'Content-Type: application/json' -d "{\"product_id\":\"$PROD\",\"quantity\":1}")" 200
+OT=$(curl -s -D /tmp/trace_headers -X POST "$BASE/api/orders" -H "$AUTH" -H "X-Request-Id: $TID" -H 'Content-Type: application/json' -d '{}' | json "['order']['id']")
+ECHO_ID=$(awk 'tolower($1)=="x-request-id:"{gsub("\r","",$2);print $2}' /tmp/trace_headers)
+# Prove correlation, not just presence: the gateway must forward the id we sent
+# and order-service must echo the SAME id back (not mint a fresh one).
+ok "order-service echoes inbound x-request-id" "$ECHO_ID" "$TID"
+# ...and the internal order->payment hop must have forwarded that same id, so
+# the id you handed the gateway is grep-able in BOTH services' logs.
+sleep 1
+O_LOG=$(docker compose logs --since 60s order-service 2>&1 | grep -c "$TID")
+P_LOG=$(docker compose logs --since 60s payment-service 2>&1 | grep -c "$TID")
+[ "$O_LOG" -ge 1 ] && [ "$P_LOG" -ge 1 ] \
+  && pass "trace id $TID seen in order-service ($O_LOG) and payment-service ($P_LOG) logs" \
+  || fail "trace id in both service logs (order=$O_LOG payment=$P_LOG)"
+
 echo "== insufficient stock =="
 CUR=$(stock "$PROD")
 ok "zero out stock" "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$BASE/api/products/$PROD/stock" -H 'Content-Type: application/json' -d "{\"delta\":-$CUR}")" 200

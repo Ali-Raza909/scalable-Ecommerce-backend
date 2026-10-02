@@ -88,7 +88,7 @@ not gateway-exposed.
 cp .env.example .env       # fill in the secrets above
 docker compose up -d       # network needed: builds via cargo-chef multi-stage
 ./e2e/seed.sh              # idempotent users + catalog (needs stack healthy)
-./e2e/regression.sh        # 31-check end-to-end regression
+./e2e/regression.sh        # 34-check end-to-end regression
 ```
 
 `e2e/seed.sh` guarantees the users (`docker_test@example.com`, `regular@example.com`,
