@@ -1,4 +1,9 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Extension, State},
+    http::StatusCode,
+    Json,
+};
+use common::RequestId;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -130,8 +135,12 @@ async fn create_passport_token(state: &AppState) -> Result<String, AppError> {
 
 pub async fn create_payment(
     State(state): State<AppState>,
+    trace: Option<Extension<RequestId>>,
     Json(input): Json<CreatePaymentRequest>,
 ) -> Result<(StatusCode, Json<CreatePaymentResponse>), AppError> {
+    let trace_id = trace.map(|Extension(RequestId(id))| id.to_string());
+    tracing::info!(?trace_id, order_id = %input.order_id, "create_payment started");
+
     if input.amount_cents <= 0 {
         return Err(AppError::BadRequest(
             "Amount must be greater than zero".to_string(),

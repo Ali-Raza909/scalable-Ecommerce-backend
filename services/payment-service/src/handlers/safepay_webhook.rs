@@ -1,9 +1,10 @@
 use axum::{
     body::Bytes,
-    extract::State,
+    extract::{Extension, State},
     http::{HeaderMap, StatusCode},
 };
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use common::RequestId;
 use hmac::{Hmac, Mac};
 use sha2::{Sha256, Sha512};
 
@@ -86,8 +87,12 @@ fn classify_event(event_type: &str, state: &str) -> Option<WebhookKind> {
 pub async fn safepay_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
+    trace: Option<Extension<RequestId>>,
     body: Bytes,
 ) -> Result<StatusCode, AppError> {
+    let trace_id = trace.map(|Extension(RequestId(id))| id.to_string());
+    tracing::info!(?trace_id, "Safepay webhook received");
+
     // TEMPORARY defensive log: confirm real payload shape before trusting
     // the event extraction below (Safepay docs are thin here).
     tracing::info!(

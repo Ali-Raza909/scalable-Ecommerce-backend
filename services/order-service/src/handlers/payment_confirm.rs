@@ -1,8 +1,9 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Extension, Path, State},
     http::StatusCode,
     Json,
 };
+use common::RequestId;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -15,8 +16,17 @@ use crate::state::AppState;
 pub async fn payment_confirm(
     State(state): State<AppState>,
     Path(order_id): Path<Uuid>,
+    trace: Option<Extension<RequestId>>,
     Json(body): Json<PaymentConfirmRequest>,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
+    let trace_id = trace.map(|Extension(RequestId(id))| id.to_string());
+    tracing::info!(
+        ?trace_id,
+        %order_id,
+        status = %body.status,
+        "payment_confirm received"
+    );
+
     // Respond with the order's resulting status so the caller (payment-service)
     // can tell a genuine flip from a no-op -- e.g. a late "paid" for an order
     // the timeout job already cancelled must be surfaced, not silently OK'd.

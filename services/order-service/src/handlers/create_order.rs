@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use common::Claims;
+use common::{Claims, RequestId};
 use uuid::Uuid;
 
 use crate::clients::Product;
@@ -17,7 +17,11 @@ pub async fn create_order(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Extension(token): Extension<String>,
+    trace: Option<Extension<RequestId>>,
 ) -> Result<(StatusCode, Json<CheckoutResponse>), AppError> {
+    let trace_id = trace.map(|Extension(RequestId(id))| id.to_string());
+    tracing::info!(?trace_id, user_id = %claims.sub, "create_order started");
+
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| AppError::BadRequest("Invalid user id in token".to_string()))?;
 

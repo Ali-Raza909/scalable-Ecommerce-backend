@@ -3,6 +3,7 @@ use axum::{
     routing::{get, patch, post},
     Router,
 };
+use common::request_id_middleware;
 
 use crate::handlers;
 use crate::state::AppState;
@@ -36,5 +37,8 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .merge(public_routes)
         .merge(protected_routes)
+        // Outermost so every request (including ones rejected by auth below)
+        // gets an id to quote.
+        .layer(middleware::from_fn(request_id_middleware))
         .with_state(state)
 }
