@@ -170,4 +170,4 @@ lets compose reuse the cached images instead of rebuilding them.
   (`/api/orders/payment-result/<id>/success|cancelled`, base via
   `PUBLIC_BASE_URL`).
 ## Project URL
-https://github.com/Ali-Raza909/scalable-Ecommerce-backend
+https://roadmap.sh/projects/scalable-ecommerce-platform
