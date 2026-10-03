@@ -169,4 +169,5 @@ lets compose reuse the cached images instead of rebuilding them.
   "payment received" page served by order-service
   (`/api/orders/payment-result/<id>/success|cancelled`, base via
   `PUBLIC_BASE_URL`).
-
+## Project URL
+https://github.com/Ali-Raza909/scalable-Ecommerce-backend
